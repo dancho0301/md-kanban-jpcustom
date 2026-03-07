@@ -2,7 +2,7 @@
 
 A VS Code extension that lets you manage project tasks and todos in a visual Kanban board — with all data stored as readable Markdown files. Human-readable, diffable, and version-control friendly.
 
-![VS Code](https://img.shields.io/badge/VS%20Code-v1.80%2B-blue)
+![VS Code](https://img.shields.io/badge/VS%20Code-v1.109%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## Features
@@ -147,7 +147,7 @@ Configured GitHub Actions for build and deploy
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) v16+
-- [VS Code](https://code.visualstudio.com/) v1.80+
+- [VS Code](https://code.visualstudio.com/) v1.109+
 
 ### Setup
 
