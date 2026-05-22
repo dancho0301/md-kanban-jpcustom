@@ -2,7 +2,7 @@
 
 All notable changes to the **MD Kanban** extension will be documented in this file.
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-05-22
 
 ### Added
 
