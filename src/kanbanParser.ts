@@ -16,6 +16,7 @@ export interface KanbanTask {
   dueDate: string;
   subtasks: SubTask[];
   assignee: string;
+  source: string;
   group: string;
 }
 
@@ -28,6 +29,54 @@ export interface KanbanBoard {
   title: string;
   columns: KanbanColumn[];
 }
+
+export type BoardTemplateId = 'blank' | 'basic' | 'sprint' | 'bug-tracker' | 'release-checklist' | 'personal';
+
+export interface BoardTemplate {
+  id: BoardTemplateId;
+  label: string;
+  description: string;
+  columns: string[];
+}
+
+export const BOARD_TEMPLATES: BoardTemplate[] = [
+  {
+    id: 'blank',
+    label: 'Blank',
+    description: 'Empty board with no columns',
+    columns: [],
+  },
+  {
+    id: 'basic',
+    label: 'Basic',
+    description: 'Simple To Do, In Progress, Done board',
+    columns: ['To Do', 'In Progress', 'Done'],
+  },
+  {
+    id: 'sprint',
+    label: 'Sprint',
+    description: 'Backlog through review for iteration work',
+    columns: ['Backlog', 'Ready', 'In Progress', 'Review', 'Done'],
+  },
+  {
+    id: 'bug-tracker',
+    label: 'Bug Tracker',
+    description: 'Triage, fix, verify, and close bugs',
+    columns: ['Triage', 'Confirmed', 'In Progress', 'Verify', 'Closed'],
+  },
+  {
+    id: 'release-checklist',
+    label: 'Release Checklist',
+    description: 'Track release preparation through shipment',
+    columns: ['Planned', 'In Progress', 'Blocked', 'Ready', 'Shipped'],
+  },
+  {
+    id: 'personal',
+    label: 'Personal',
+    description: 'Lightweight personal planning board',
+    columns: ['Today', 'This Week', 'Waiting', 'Done'],
+  },
+];
 
 /**
  * Parse a Markdown string into a KanbanBoard structure.
@@ -48,6 +97,7 @@ export function parseMarkdown(content: string): KanbanBoard {
   let currentTask: KanbanTask | null = null;
   let descriptionLines: string[] = [];
   let currentGroup = '';
+  let keepEmptyBoard = false;
 
   function flushTask() {
     if (currentTask && currentColumn) {
@@ -67,6 +117,11 @@ export function parseMarkdown(content: string): KanbanBoard {
   }
 
   for (const line of lines) {
+    if (/^<!--\s*empty-board:\s*true\s*-->$/i.test(line)) {
+      keepEmptyBoard = true;
+      continue;
+    }
+
     const h1Match = line.match(/^#\s+(.+)$/);
     if (h1Match) {
       board.title = h1Match[1].trim();
@@ -101,6 +156,7 @@ export function parseMarkdown(content: string): KanbanBoard {
         dueDate: '',
         subtasks: [],
         assignee: '',
+        source: '',
         group: currentGroup,
       };
       continue;
@@ -112,7 +168,9 @@ export function parseMarkdown(content: string): KanbanBoard {
       if (metaMatch) {
         const key = metaMatch[1].toLowerCase();
         const val = metaMatch[2].trim();
-        if (key === 'priority' && ['critical','high','medium','low'].includes(val)) {
+        if (key === 'id' && val) {
+          currentTask.id = val;
+        } else if (key === 'priority' && ['critical','high','medium','low'].includes(val)) {
           currentTask.priority = val as Priority;
         } else if (key === 'workload' && ['easy','normal','hard','extreme'].includes(val)) {
           currentTask.workload = val as Workload;
@@ -120,6 +178,8 @@ export function parseMarkdown(content: string): KanbanBoard {
           currentTask.dueDate = val;
         } else if (key === 'assignee') {
           currentTask.assignee = val;
+        } else if (key === 'source') {
+          currentTask.source = val;
         } else if (key === 'group') {
           currentTask.group = val;
         }
@@ -148,8 +208,8 @@ export function parseMarkdown(content: string): KanbanBoard {
 
   flushColumn();
 
-  // If empty board, create default columns
-  if (board.columns.length === 0) {
+  // Older empty files opened with starter columns. Blank-template boards opt out.
+  if (board.columns.length === 0 && !keepEmptyBoard) {
     board.columns = [
       { name: 'To Do', tasks: [] },
       { name: 'In Progress', tasks: [] },
@@ -162,6 +222,10 @@ export function parseMarkdown(content: string): KanbanBoard {
 
 function serializeTask(lines: string[], task: KanbanTask, needsGroupOverride = false): void {
   lines.push(`#### ${task.title}`);
+  if (!task.id) {
+    task.id = generateId();
+  }
+  lines.push(`<!-- id: ${task.id} -->`);
   if (needsGroupOverride) {
     lines.push(`<!-- group: ${task.group} -->`);
   }
@@ -188,6 +252,9 @@ function serializeTask(lines: string[], task: KanbanTask, needsGroupOverride = f
   if (task.assignee) {
     lines.push(`<!-- assignee: ${task.assignee} -->`);
   }
+  if (task.source) {
+    lines.push(`<!-- source: ${task.source} -->`);
+  }
   lines.push('');
 }
 
@@ -199,6 +266,9 @@ export function serializeToMarkdown(board: KanbanBoard): string {
   lines.push('<!-- This is a Kanban Board file created with MD Kanban extension -->');
   lines.push('<!-- GitHub: https://github.com/jebakumarj/md-kanban -->');
   lines.push('<!-- VS Code Extension: Search "MD Kanban" in the extension store (ID: jeddak.md-kanban) -->');
+  if (board.columns.length === 0) {
+    lines.push('<!-- empty-board: true -->');
+  }
   lines.push('');
   lines.push(`# ${board.title}`);
   lines.push('');
@@ -234,13 +304,14 @@ export function generateId(): string {
  * Create a default empty board markdown string.
  */
 export function createDefaultBoard(title: string = 'Kanban Board'): string {
+  return createBoardFromTemplate(title, 'basic');
+}
+
+export function createBoardFromTemplate(title: string = 'Kanban Board', templateId: BoardTemplateId = 'basic'): string {
+  const template = BOARD_TEMPLATES.find(t => t.id === templateId) ?? BOARD_TEMPLATES.find(t => t.id === 'basic')!;
   const board: KanbanBoard = {
     title,
-    columns: [
-      { name: 'To Do', tasks: [] },
-      { name: 'In Progress', tasks: [] },
-      { name: 'Done', tasks: [] },
-    ],
+    columns: template.columns.map(name => ({ name, tasks: [] })),
   };
   return serializeToMarkdown(board);
 }

@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
+import { archiveTaskFromBoard } from './archive';
 import { parseMarkdown, serializeToMarkdown, KanbanBoard, generateId } from './kanbanParser';
+import { openTaskSource } from './source';
 import { getWebviewContent } from './webviewContent';
 
 export class KanbanPanel {
@@ -7,15 +9,19 @@ export class KanbanPanel {
   private static panels: Map<string, KanbanPanel> = new Map();
 
   private readonly _panel: vscode.WebviewPanel;
+  private readonly _extensionUri: vscode.Uri;
   private readonly _fileUri: vscode.Uri;
   private _board: KanbanBoard;
   private _disposables: vscode.Disposable[] = [];
 
-  public static createOrShow(fileUri: vscode.Uri) {
+  public static createOrShow(fileUri: vscode.Uri, extensionUri: vscode.Uri, taskId?: string) {
     const key = fileUri.toString();
     const existing = KanbanPanel.panels.get(key);
     if (existing) {
       existing._panel.reveal(vscode.ViewColumn.One);
+      if (taskId) {
+        existing.openTaskInView(taskId);
+      }
       return;
     }
 
@@ -26,15 +32,20 @@ export class KanbanPanel {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
+        localResourceRoots: [
+          vscode.Uri.joinPath(extensionUri, 'media'),
+        ],
       }
     );
 
-    const kanbanPanel = new KanbanPanel(panel, fileUri);
+    const kanbanPanel = new KanbanPanel(panel, extensionUri, fileUri, taskId);
     KanbanPanel.panels.set(key, kanbanPanel);
+    panel.reveal(vscode.ViewColumn.One);
   }
 
-  private constructor(panel: vscode.WebviewPanel, fileUri: vscode.Uri) {
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, fileUri: vscode.Uri, private _pendingTaskId?: string) {
     this._panel = panel;
+    this._extensionUri = extensionUri;
     this._fileUri = fileUri;
     this._board = { title: '', columns: [] };
 
@@ -78,7 +89,21 @@ export class KanbanPanel {
     }
 
     this._panel.title = this._board.title;
-    this._panel.webview.html = getWebviewContent(this._panel.webview, this._board);
+    try {
+      this._panel.webview.html = getWebviewContent(
+        this._panel.webview,
+        this._extensionUri,
+        this._board,
+        { canArchiveCards: !isArchiveBoardFile(this._fileUri) }
+      );
+      if (this._pendingTaskId) {
+        const taskId = this._pendingTaskId;
+        this._pendingTaskId = undefined;
+        setTimeout(() => this._postOpenTask(taskId), 100);
+      }
+    } catch {
+      vscode.window.showErrorMessage('Could not render the Kanban board. See MD Kanban output logs for details.');
+    }
   }
 
   private async _save() {
@@ -101,6 +126,7 @@ export class KanbanPanel {
             dueDate: message.dueDate || '',
             subtasks: message.subtasks || [],
             assignee: message.assignee || '',
+            source: message.source || '',
             group: message.group || '',
           });
           await this._save();
@@ -121,6 +147,7 @@ export class KanbanPanel {
             task.dueDate = message.dueDate || '';
             task.subtasks = message.subtasks || [];
             task.assignee = message.assignee || '';
+            task.source = message.source || '';
             task.group = message.group || '';
             await this._save();
             this._sendBoardUpdate();
@@ -298,6 +325,59 @@ export class KanbanPanel {
         await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
         break;
       }
+
+      case 'openSource': {
+        await openTaskSource(message.source, this._fileUri);
+        break;
+      }
+
+      case 'archiveTask': {
+        if (isArchiveBoardFile(this._fileUri)) {
+          this._panel.webview.postMessage({
+            type: 'archiveResult',
+            ok: false,
+            message: 'Cards in archive.kanban.md cannot be archived again.',
+          });
+          break;
+        }
+
+        try {
+          const archived = await archiveTaskFromBoard(this._board, this._fileUri, {
+            taskId: message.taskId,
+            taskSnapshot: message.task,
+            fromColumn: message.fromColumn,
+            taskIndex: message.taskIndex,
+          });
+
+          if (archived) {
+            await this._save();
+            await vscode.commands.executeCommand('md-kanban.refreshBoards').then(undefined, () => undefined);
+            this._sendBoardUpdate();
+            this._panel.webview.postMessage({
+              type: 'archiveResult',
+              ok: true,
+              message: `Archived card to archive.kanban.md in ${archived.archiveColumnName}.`,
+            });
+            vscode.window.showInformationMessage(`Archived card to archive.kanban.md in ${archived.archiveColumnName}.`);
+          } else {
+            this._panel.webview.postMessage({
+              type: 'archiveResult',
+              ok: false,
+              message: 'Card was not found.',
+            });
+            vscode.window.showInformationMessage('Card was not found.');
+          }
+        } catch (error) {
+          const messageText = error instanceof Error ? error.message : String(error);
+          this._panel.webview.postMessage({
+            type: 'archiveResult',
+            ok: false,
+            message: `Could not archive card: ${messageText}`,
+          });
+          vscode.window.showErrorMessage(`Could not archive card: ${messageText}`);
+        }
+        break;
+      }
     }
   }
 
@@ -335,6 +415,18 @@ export class KanbanPanel {
     });
   }
 
+  public openTaskInView(taskId: string) {
+    this._panel.reveal(vscode.ViewColumn.One);
+    this._postOpenTask(taskId);
+  }
+
+  private _postOpenTask(taskId: string) {
+    this._panel.webview.postMessage({
+      type: 'openTaskDetails',
+      taskId,
+    });
+  }
+
   public dispose() {
     KanbanPanel.panels.delete(this._fileUri.toString());
     this._panel.dispose();
@@ -343,4 +435,8 @@ export class KanbanPanel {
       if (d) { d.dispose(); }
     }
   }
+}
+
+function isArchiveBoardFile(uri: vscode.Uri): boolean {
+  return uri.path.split('/').pop()?.toLowerCase() === 'archive.kanban.md';
 }

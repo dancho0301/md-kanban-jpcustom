@@ -2,7 +2,7 @@
   "name": "md-kanban",
   "displayName": "MD Kanban",
   "description": "Manage project tasks and todos in a Kanban board view, stored as Markdown files",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "jeddak",
   "license": "MIT",
   "repository": {
@@ -32,11 +32,19 @@
   "activationEvents": [
     "onView:md-kanban.boards",
     "onView:md-kanban.codeTodos",
+    "onView:md-kanban.overdueTasks",
+    "onView:md-kanban.calendar",
     "onCommand:md-kanban.openBoard",
     "onCommand:md-kanban.createBoard",
     "onCommand:md-kanban.openBoardFile",
     "onCommand:md-kanban.refreshBoards",
-    "onCommand:md-kanban.refreshCodeTodos"
+    "onCommand:md-kanban.refreshCodeTodos",
+    "onCommand:md-kanban.refreshOverdueTasks",
+    "onCommand:md-kanban.showOverdueTasks",
+    "onCommand:md-kanban.refreshTimeline",
+    "onCommand:md-kanban.showTimeline",
+    "onCommand:md-kanban.refreshCalendar",
+    "onCommand:md-kanban.showCalendar"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -58,6 +66,12 @@
         "category": "Kanban"
       },
       {
+        "command": "md-kanban.addTodoToBoard",
+        "title": "Add TODO to Board",
+        "category": "Kanban",
+        "icon": "$(add)"
+      },
+      {
         "command": "md-kanban.refreshBoards",
         "title": "Refresh Kanban Boards",
         "category": "Kanban",
@@ -68,6 +82,42 @@
         "title": "Refresh TODOs",
         "category": "Kanban",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "md-kanban.refreshOverdueTasks",
+        "title": "Refresh Overdue Tasks",
+        "category": "Kanban",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "md-kanban.showOverdueTasks",
+        "title": "Show Overdue Tasks",
+        "category": "Kanban",
+        "icon": "$(warning)"
+      },
+      {
+        "command": "md-kanban.refreshTimeline",
+        "title": "Refresh Timeline",
+        "category": "Kanban",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "md-kanban.showTimeline",
+        "title": "Show Timeline",
+        "category": "Kanban",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "md-kanban.refreshCalendar",
+        "title": "Refresh Calendar",
+        "category": "Kanban",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "md-kanban.showCalendar",
+        "title": "Show Calendar",
+        "category": "Kanban",
+        "icon": "$(calendar)"
       }
     ],
     "viewsContainers": {
@@ -88,19 +138,92 @@
         {
           "id": "md-kanban.codeTodos",
           "name": "TODOs"
+        },
+        {
+          "id": "md-kanban.overdueTasks",
+          "name": "Overdue Tasks"
+        },
+        {
+          "id": "md-kanban.calendar",
+          "name": "Calendar",
+          "type": "webview"
         }
       ]
     },
     "viewsWelcome": [
       {
         "view": "md-kanban.boards",
-        "contents": "No .kanban.md boards found.\n[Create a Kanban Board](command:md-kanban.createBoard)"
+        "contents": "No kanban boards found.\n[Create a Kanban Board](command:md-kanban.createBoard)"
       },
       {
         "view": "md-kanban.codeTodos",
-        "contents": "No `// TODO` comments found in this workspace."
+        "contents": "No configured TODO comments found in this workspace."
+      },
+      {
+        "view": "md-kanban.overdueTasks",
+        "contents": "No overdue Kanban tasks found."
+      },
+      {
+        "view": "md-kanban.calendar",
+        "contents": "No Kanban tasks with due dates found."
       }
     ],
+    "configuration": {
+      "title": "MD Kanban",
+      "properties": {
+        "mdKanban.todoInclude": {
+          "type": "array",
+          "default": [
+            "**/*"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Glob patterns for files scanned by the MD Kanban TODO side panel."
+        },
+        "mdKanban.todoExclude": {
+          "type": "array",
+          "default": [
+            "**/node_modules/**",
+            "**/out/**",
+            "**/dist/**",
+            "**/build/**",
+            "**/coverage/**"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Glob patterns excluded from the MD Kanban TODO side panel scan. Board files and .git are always excluded."
+        },
+        "mdKanban.todoKeywords": {
+          "type": "array",
+          "default": [
+            "TODO",
+            "FIXME",
+            "BUG",
+            "HACK",
+            "NOTE"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Comment keywords shown in the MD Kanban TODO side panel."
+        },
+        "mdKanban.completedColumnGlobs": {
+          "type": "array",
+          "default": [
+            "Done",
+            "Closed",
+            "Shipped",
+            "Archived"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Column-name glob patterns treated as completed when scanning overdue Kanban tasks."
+        }
+      }
+    },
     "menus": {
       "view/title": [
         {
@@ -117,6 +240,26 @@
           "command": "md-kanban.refreshCodeTodos",
           "when": "view == md-kanban.codeTodos",
           "group": "navigation"
+        },
+        {
+          "command": "md-kanban.refreshOverdueTasks",
+          "when": "view == md-kanban.overdueTasks",
+          "group": "navigation"
+        },
+        {
+          "command": "md-kanban.refreshCalendar",
+          "when": "view == md-kanban.calendar",
+          "group": "navigation"
+        },
+        {
+          "command": "md-kanban.showTimeline",
+          "when": "view == md-kanban.calendar && mdKanban.calendarModeCalendar",
+          "group": "navigation"
+        },
+        {
+          "command": "md-kanban.showCalendar",
+          "when": "view == md-kanban.calendar && mdKanban.calendarModeTimeline",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -124,6 +267,31 @@
           "command": "md-kanban.openBoardFile",
           "when": "view == md-kanban.boards && viewItem == kanbanBoard",
           "group": "inline"
+        },
+        {
+          "command": "md-kanban.addTodoToBoard",
+          "when": "view == md-kanban.codeTodos && viewItem == codeTodo",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "md-kanban.addTodoToBoard",
+          "when": "false"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "md-kanban.openBoardFile",
+          "when": "resourceFilename =~ /(^kanban\\.md$|^\\.kanban\\.md$|\\.kanban\\.md$)/",
+          "group": "navigation"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "md-kanban.openBoardFile",
+          "when": "resourceFilename =~ /(^kanban\\.md$|^\\.kanban\\.md$|\\.kanban\\.md$)/",
+          "group": "navigation"
         }
       ]
     }
