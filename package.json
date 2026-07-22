@@ -1,18 +1,18 @@
 {
-  "name": "md-kanban",
-  "displayName": "MD Kanban",
+  "name": "md-kanban-jp",
+  "displayName": "MD Kanban JP",
   "description": "Markdownファイルとして保存されるカンバンボードでプロジェクトのタスクやTODOを管理します",
   "version": "0.4.0",
-  "publisher": "jeddak",
+  "publisher": "dancho0301",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jebakumarj/md-kanban"
+    "url": "https://github.com/dancho0301/md-kanban-jpcustom"
   },
   "bugs": {
-    "url": "https://github.com/jebakumarj/md-kanban/issues"
+    "url": "https://github.com/dancho0301/md-kanban-jpcustom/issues"
   },
-  "homepage": "https://github.com/jebakumarj/md-kanban#readme",
+  "homepage": "https://github.com/dancho0301/md-kanban-jpcustom#readme",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.109.0"
@@ -30,91 +30,91 @@
     "board"
   ],
   "activationEvents": [
-    "onView:md-kanban.boards",
-    "onView:md-kanban.codeTodos",
-    "onView:md-kanban.overdueTasks",
-    "onView:md-kanban.calendar",
-    "onCommand:md-kanban.openBoard",
-    "onCommand:md-kanban.createBoard",
-    "onCommand:md-kanban.openBoardFile",
-    "onCommand:md-kanban.refreshBoards",
-    "onCommand:md-kanban.refreshCodeTodos",
-    "onCommand:md-kanban.refreshOverdueTasks",
-    "onCommand:md-kanban.showOverdueTasks",
-    "onCommand:md-kanban.refreshTimeline",
-    "onCommand:md-kanban.showTimeline",
-    "onCommand:md-kanban.refreshCalendar",
-    "onCommand:md-kanban.showCalendar"
+    "onView:md-kanban-jp.boards",
+    "onView:md-kanban-jp.codeTodos",
+    "onView:md-kanban-jp.overdueTasks",
+    "onView:md-kanban-jp.calendar",
+    "onCommand:md-kanban-jp.openBoard",
+    "onCommand:md-kanban-jp.createBoard",
+    "onCommand:md-kanban-jp.openBoardFile",
+    "onCommand:md-kanban-jp.refreshBoards",
+    "onCommand:md-kanban-jp.refreshCodeTodos",
+    "onCommand:md-kanban-jp.refreshOverdueTasks",
+    "onCommand:md-kanban-jp.showOverdueTasks",
+    "onCommand:md-kanban-jp.refreshTimeline",
+    "onCommand:md-kanban-jp.showTimeline",
+    "onCommand:md-kanban-jp.refreshCalendar",
+    "onCommand:md-kanban-jp.showCalendar"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "md-kanban.openBoard",
+        "command": "md-kanban-jp.openBoard",
         "title": "カンバンボードを開く",
         "category": "カンバン"
       },
       {
-        "command": "md-kanban.createBoard",
+        "command": "md-kanban-jp.createBoard",
         "title": "新しいカンバンボードを作成",
         "category": "カンバン",
         "icon": "$(add)"
       },
       {
-        "command": "md-kanban.openBoardFile",
+        "command": "md-kanban-jp.openBoardFile",
         "title": "カンバンボードを開く",
         "category": "カンバン"
       },
       {
-        "command": "md-kanban.addTodoToBoard",
+        "command": "md-kanban-jp.addTodoToBoard",
         "title": "TODOをボードに追加",
         "category": "カンバン",
         "icon": "$(add)"
       },
       {
-        "command": "md-kanban.refreshBoards",
+        "command": "md-kanban-jp.refreshBoards",
         "title": "カンバンボードを更新",
         "category": "カンバン",
         "icon": "$(refresh)"
       },
       {
-        "command": "md-kanban.refreshCodeTodos",
+        "command": "md-kanban-jp.refreshCodeTodos",
         "title": "TODOを更新",
         "category": "カンバン",
         "icon": "$(refresh)"
       },
       {
-        "command": "md-kanban.refreshOverdueTasks",
+        "command": "md-kanban-jp.refreshOverdueTasks",
         "title": "期限超過タスクを更新",
         "category": "カンバン",
         "icon": "$(refresh)"
       },
       {
-        "command": "md-kanban.showOverdueTasks",
+        "command": "md-kanban-jp.showOverdueTasks",
         "title": "期限超過タスクを表示",
         "category": "カンバン",
         "icon": "$(warning)"
       },
       {
-        "command": "md-kanban.refreshTimeline",
+        "command": "md-kanban-jp.refreshTimeline",
         "title": "タイムラインを更新",
         "category": "カンバン",
         "icon": "$(refresh)"
       },
       {
-        "command": "md-kanban.showTimeline",
+        "command": "md-kanban-jp.showTimeline",
         "title": "タイムラインを表示",
         "category": "カンバン",
         "icon": "$(list-tree)"
       },
       {
-        "command": "md-kanban.refreshCalendar",
+        "command": "md-kanban-jp.refreshCalendar",
         "title": "カレンダーを更新",
         "category": "カンバン",
         "icon": "$(refresh)"
       },
       {
-        "command": "md-kanban.showCalendar",
+        "command": "md-kanban-jp.showCalendar",
         "title": "カレンダーを表示",
         "category": "カンバン",
         "icon": "$(calendar)"
@@ -123,28 +123,28 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "md-kanban",
-          "title": "MD Kanban",
+          "id": "md-kanban-jp",
+          "title": "MD Kanban JP",
           "icon": "src/image/kanban-activity.svg"
         }
       ]
     },
     "views": {
-      "md-kanban": [
+      "md-kanban-jp": [
         {
-          "id": "md-kanban.boards",
+          "id": "md-kanban-jp.boards",
           "name": "カンバンボード"
         },
         {
-          "id": "md-kanban.codeTodos",
+          "id": "md-kanban-jp.codeTodos",
           "name": "TODO"
         },
         {
-          "id": "md-kanban.overdueTasks",
+          "id": "md-kanban-jp.overdueTasks",
           "name": "期限超過タスク"
         },
         {
-          "id": "md-kanban.calendar",
+          "id": "md-kanban-jp.calendar",
           "name": "カレンダー",
           "type": "webview"
         }
@@ -152,26 +152,26 @@
     },
     "viewsWelcome": [
       {
-        "view": "md-kanban.boards",
-        "contents": "カンバンボードが見つかりません。\n[カンバンボードを作成](command:md-kanban.createBoard)"
+        "view": "md-kanban-jp.boards",
+        "contents": "カンバンボードが見つかりません。\n[カンバンボードを作成](command:md-kanban-jp.createBoard)"
       },
       {
-        "view": "md-kanban.codeTodos",
+        "view": "md-kanban-jp.codeTodos",
         "contents": "このワークスペースには設定済みのTODOコメントが見つかりません。"
       },
       {
-        "view": "md-kanban.overdueTasks",
+        "view": "md-kanban-jp.overdueTasks",
         "contents": "期限超過のカンバンタスクは見つかりません。"
       },
       {
-        "view": "md-kanban.calendar",
+        "view": "md-kanban-jp.calendar",
         "contents": "期限日が設定されたカンバンタスクは見つかりません。"
       }
     ],
     "configuration": {
-      "title": "MD Kanban",
+      "title": "MD Kanban JP",
       "properties": {
-        "mdKanban.todoInclude": {
+        "mdKanbanJp.todoInclude": {
           "type": "array",
           "default": [
             "**/*"
@@ -179,9 +179,9 @@
           "items": {
             "type": "string"
           },
-          "description": "MD KanbanのTODOサイドパネルでスキャンするファイルのグロブパターン。"
+          "description": "MD Kanban JPのTODOサイドパネルでスキャンするファイルのグロブパターン。"
         },
-        "mdKanban.todoExclude": {
+        "mdKanbanJp.todoExclude": {
           "type": "array",
           "default": [
             "**/node_modules/**",
@@ -193,9 +193,9 @@
           "items": {
             "type": "string"
           },
-          "description": "MD KanbanのTODOサイドパネルのスキャンから除外するグロブパターン。ボードファイルと.gitは常に除外されます。"
+          "description": "MD Kanban JPのTODOサイドパネルのスキャンから除外するグロブパターン。ボードファイルと.gitは常に除外されます。"
         },
-        "mdKanban.todoKeywords": {
+        "mdKanbanJp.todoKeywords": {
           "type": "array",
           "default": [
             "TODO",
@@ -207,9 +207,9 @@
           "items": {
             "type": "string"
           },
-          "description": "MD KanbanのTODOサイドパネルに表示するコメントキーワード。"
+          "description": "MD Kanban JPのTODOサイドパネルに表示するコメントキーワード。"
         },
-        "mdKanban.completedColumnGlobs": {
+        "mdKanbanJp.completedColumnGlobs": {
           "type": "array",
           "default": [
             "完了",
@@ -231,69 +231,69 @@
     "menus": {
       "view/title": [
         {
-          "command": "md-kanban.createBoard",
-          "when": "view == md-kanban.boards",
+          "command": "md-kanban-jp.createBoard",
+          "when": "view == md-kanban-jp.boards",
           "group": "navigation"
         },
         {
-          "command": "md-kanban.refreshBoards",
-          "when": "view == md-kanban.boards",
+          "command": "md-kanban-jp.refreshBoards",
+          "when": "view == md-kanban-jp.boards",
           "group": "navigation"
         },
         {
-          "command": "md-kanban.refreshCodeTodos",
-          "when": "view == md-kanban.codeTodos",
+          "command": "md-kanban-jp.refreshCodeTodos",
+          "when": "view == md-kanban-jp.codeTodos",
           "group": "navigation"
         },
         {
-          "command": "md-kanban.refreshOverdueTasks",
-          "when": "view == md-kanban.overdueTasks",
+          "command": "md-kanban-jp.refreshOverdueTasks",
+          "when": "view == md-kanban-jp.overdueTasks",
           "group": "navigation"
         },
         {
-          "command": "md-kanban.refreshCalendar",
-          "when": "view == md-kanban.calendar",
+          "command": "md-kanban-jp.refreshCalendar",
+          "when": "view == md-kanban-jp.calendar",
           "group": "navigation"
         },
         {
-          "command": "md-kanban.showTimeline",
-          "when": "view == md-kanban.calendar && mdKanban.calendarModeCalendar",
+          "command": "md-kanban-jp.showTimeline",
+          "when": "view == md-kanban-jp.calendar && mdKanbanJp.calendarModeCalendar",
           "group": "navigation"
         },
         {
-          "command": "md-kanban.showCalendar",
-          "when": "view == md-kanban.calendar && mdKanban.calendarModeTimeline",
+          "command": "md-kanban-jp.showCalendar",
+          "when": "view == md-kanban-jp.calendar && mdKanbanJp.calendarModeTimeline",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
-          "command": "md-kanban.openBoardFile",
-          "when": "view == md-kanban.boards && viewItem == kanbanBoard",
+          "command": "md-kanban-jp.openBoardFile",
+          "when": "view == md-kanban-jp.boards && viewItem == kanbanBoard",
           "group": "inline"
         },
         {
-          "command": "md-kanban.addTodoToBoard",
-          "when": "view == md-kanban.codeTodos && viewItem == codeTodo",
+          "command": "md-kanban-jp.addTodoToBoard",
+          "when": "view == md-kanban-jp.codeTodos && viewItem == codeTodo",
           "group": "inline"
         }
       ],
       "commandPalette": [
         {
-          "command": "md-kanban.addTodoToBoard",
+          "command": "md-kanban-jp.addTodoToBoard",
           "when": "false"
         }
       ],
       "explorer/context": [
         {
-          "command": "md-kanban.openBoardFile",
+          "command": "md-kanban-jp.openBoardFile",
           "when": "resourceFilename =~ /(^kanban\\.md$|^\\.kanban\\.md$|\\.kanban\\.md$)/",
           "group": "navigation"
         }
       ],
       "editor/title/context": [
         {
-          "command": "md-kanban.openBoardFile",
+          "command": "md-kanban-jp.openBoardFile",
           "when": "resourceFilename =~ /(^kanban\\.md$|^\\.kanban\\.md$|\\.kanban\\.md$)/",
           "group": "navigation"
         }

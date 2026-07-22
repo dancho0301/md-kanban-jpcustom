@@ -17,7 +17,7 @@ class KanbanBoardItem extends vscode.TreeItem {
     this.description = vscode.workspace.asRelativePath(vscode.Uri.joinPath(uri, '..'));
     this.contextValue = 'kanbanBoard';
     this.command = {
-      command: 'md-kanban.openBoardFile',
+      command: 'md-kanban-jp.openBoardFile',
       title: 'カンバンボードを開く',
       arguments: [uri],
     };
@@ -146,7 +146,7 @@ class CodeTodoItem extends vscode.TreeItem {
     this.iconPath = iconUri;
     this.contextValue = 'codeTodo';
     this.command = {
-      command: 'md-kanban.openCodeTodo',
+      command: 'md-kanban-jp.openCodeTodo',
       title: 'TODOを開く',
       arguments: [todo],
     };
@@ -216,7 +216,7 @@ class OverdueTaskItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
     this.contextValue = 'overdueTask';
     this.command = {
-      command: 'md-kanban.openOverdueTask',
+      command: 'md-kanban-jp.openOverdueTask',
       title: '期限超過タスクを開く',
       arguments: [task],
     };
@@ -283,14 +283,14 @@ class CalendarWebviewProvider implements vscode.WebviewViewProvider {
     this.mode = 'calendar';
     this.updateModeContext();
     await this.refresh();
-    await vscode.commands.executeCommand('md-kanban.calendar.focus');
+    await vscode.commands.executeCommand('md-kanban-jp.calendar.focus');
   }
 
   async showTimeline(): Promise<void> {
     this.mode = 'timeline';
     this.updateModeContext();
     await this.refresh();
-    await vscode.commands.executeCommand('md-kanban.calendar.focus');
+    await vscode.commands.executeCommand('md-kanban-jp.calendar.focus');
   }
 
   private async handleMessage(message: { type?: string; date?: string; taskId?: string }) {
@@ -354,8 +354,8 @@ class CalendarWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   private updateModeContext(): void {
-    vscode.commands.executeCommand('setContext', 'mdKanban.calendarModeCalendar', this.mode === 'calendar');
-    vscode.commands.executeCommand('setContext', 'mdKanban.calendarModeTimeline', this.mode === 'timeline');
+    vscode.commands.executeCommand('setContext', 'mdKanbanJp.calendarModeCalendar', this.mode === 'calendar');
+    vscode.commands.executeCommand('setContext', 'mdKanbanJp.calendarModeTimeline', this.mode === 'timeline');
   }
 }
 
@@ -366,26 +366,26 @@ export function activate(context: vscode.ExtensionContext) {
   );
   const overdueProvider = new OverdueTasksProvider();
   const calendarProvider = new CalendarWebviewProvider(context.extensionUri);
-  const boardsView = vscode.window.createTreeView('md-kanban.boards', {
+  const boardsView = vscode.window.createTreeView('md-kanban-jp.boards', {
     treeDataProvider: boardsProvider,
     showCollapseAll: false,
   });
   context.subscriptions.push(boardsView);
 
-  const todosView = vscode.window.createTreeView('md-kanban.codeTodos', {
+  const todosView = vscode.window.createTreeView('md-kanban-jp.codeTodos', {
     treeDataProvider: todosProvider,
     showCollapseAll: false,
   });
   context.subscriptions.push(todosView);
 
-  const overdueView = vscode.window.createTreeView('md-kanban.overdueTasks', {
+  const overdueView = vscode.window.createTreeView('md-kanban-jp.overdueTasks', {
     treeDataProvider: overdueProvider,
     showCollapseAll: true,
   });
   context.subscriptions.push(overdueView);
 
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('md-kanban.calendar', calendarProvider)
+    vscode.window.registerWebviewViewProvider('md-kanban-jp.calendar', calendarProvider)
   );
 
   const boardWatcher = vscode.workspace.createFileSystemWatcher('**/*kanban.md');
@@ -415,14 +415,14 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(event => {
       if (
-        event.affectsConfiguration('mdKanban.todoInclude') ||
-        event.affectsConfiguration('mdKanban.todoExclude') ||
-        event.affectsConfiguration('mdKanban.todoKeywords')
+        event.affectsConfiguration('mdKanbanJp.todoInclude') ||
+        event.affectsConfiguration('mdKanbanJp.todoExclude') ||
+        event.affectsConfiguration('mdKanbanJp.todoKeywords')
       ) {
         todosProvider.refresh();
       }
 
-      if (event.affectsConfiguration('mdKanban.completedColumnGlobs')) {
+      if (event.affectsConfiguration('mdKanbanJp.completedColumnGlobs')) {
         overdueProvider.refresh();
         calendarProvider.refresh();
       }
@@ -430,7 +430,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.openBoard', async () => {
+    vscode.commands.registerCommand('md-kanban-jp.openBoard', async () => {
       const files = await findKanbanBoards(20);
 
       if (files.length === 0) {
@@ -464,7 +464,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.openBoardFile', async (target: vscode.Uri | KanbanBoardItem | { uri?: vscode.Uri }) => {
+    vscode.commands.registerCommand('md-kanban-jp.openBoardFile', async (target: vscode.Uri | KanbanBoardItem | { uri?: vscode.Uri }) => {
       const fileUri = getBoardUriFromTarget(target) ?? getActiveBoardUri();
       if (fileUri) {
         KanbanPanel.createOrShow(fileUri, context.extensionUri);
@@ -475,7 +475,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.createBoard', async () => {
+    vscode.commands.registerCommand('md-kanban-jp.createBoard', async () => {
       const created = await createNewBoard(context.extensionUri);
       if (created) {
         boardsProvider.refresh();
@@ -484,42 +484,42 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.refreshBoards', () => boardsProvider.refresh())
+    vscode.commands.registerCommand('md-kanban-jp.refreshBoards', () => boardsProvider.refresh())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.refreshCodeTodos', () => todosProvider.refresh())
+    vscode.commands.registerCommand('md-kanban-jp.refreshCodeTodos', () => todosProvider.refresh())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.refreshOverdueTasks', () => overdueProvider.refresh())
+    vscode.commands.registerCommand('md-kanban-jp.refreshOverdueTasks', () => overdueProvider.refresh())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.showOverdueTasks', async () => {
+    vscode.commands.registerCommand('md-kanban-jp.showOverdueTasks', async () => {
       overdueProvider.refresh();
-      await vscode.commands.executeCommand('md-kanban.overdueTasks.focus');
+      await vscode.commands.executeCommand('md-kanban-jp.overdueTasks.focus');
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.refreshTimeline', () => calendarProvider.refresh())
+    vscode.commands.registerCommand('md-kanban-jp.refreshTimeline', () => calendarProvider.refresh())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.showTimeline', () => calendarProvider.showTimeline())
+    vscode.commands.registerCommand('md-kanban-jp.showTimeline', () => calendarProvider.showTimeline())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.refreshCalendar', () => calendarProvider.refresh())
+    vscode.commands.registerCommand('md-kanban-jp.refreshCalendar', () => calendarProvider.refresh())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.showCalendar', () => calendarProvider.showCalendar())
+    vscode.commands.registerCommand('md-kanban-jp.showCalendar', () => calendarProvider.showCalendar())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.openCodeTodo', async (target: CodeTodo | CodeTodoItem) => {
+    vscode.commands.registerCommand('md-kanban-jp.openCodeTodo', async (target: CodeTodo | CodeTodoItem) => {
       const todo = target instanceof CodeTodoItem ? target.todo : target;
       if (!todo || !todo.uri) {
         return;
@@ -534,7 +534,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.addTodoToBoard', async (target: CodeTodo | CodeTodoItem) => {
+    vscode.commands.registerCommand('md-kanban-jp.addTodoToBoard', async (target: CodeTodo | CodeTodoItem) => {
       const todo = target instanceof CodeTodoItem ? target.todo : target;
       if (!todo || !todo.uri) {
         vscode.window.showErrorMessage('選択したTODOが見つかりませんでした。');
@@ -552,7 +552,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.openOverdueTask', async (target: OverdueTask | OverdueTaskItem) => {
+    vscode.commands.registerCommand('md-kanban-jp.openOverdueTask', async (target: OverdueTask | OverdueTaskItem) => {
       const task = target instanceof OverdueTaskItem ? target.task : target;
       if (task?.boardUri) {
         KanbanPanel.createOrShow(task.boardUri, context.extensionUri, task.taskId);

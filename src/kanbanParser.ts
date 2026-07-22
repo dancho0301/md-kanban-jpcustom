@@ -263,9 +263,9 @@ function serializeTask(lines: string[], task: KanbanTask, needsGroupOverride = f
  */
 export function serializeToMarkdown(board: KanbanBoard): string {
   const lines: string[] = [];
-  lines.push('<!-- これはMD Kanban拡張機能で作成されたカンバンボードファイルです -->');
-  lines.push('<!-- GitHub: https://github.com/jebakumarj/md-kanban -->');
-  lines.push('<!-- VS Code拡張機能: 拡張機能ストアで"MD Kanban"を検索してください (ID: jeddak.md-kanban) -->');
+  lines.push('<!-- これはMD Kanban JP拡張機能で作成されたカンバンボードファイルです -->');
+  lines.push('<!-- GitHub: https://github.com/dancho0301/md-kanban-jpcustom -->');
+  lines.push('<!-- VS Code拡張機能ID: dancho0301.md-kanban-jp -->');
   if (board.columns.length === 0) {
     lines.push('<!-- empty-board: true -->');
   }

@@ -5,7 +5,7 @@ import { openTaskSource } from './source';
 import { getWebviewContent } from './webviewContent';
 
 export class KanbanPanel {
-  public static readonly viewType = 'mdKanban.boardView';
+  public static readonly viewType = 'mdKanbanJp.boardView';
   private static panels: Map<string, KanbanPanel> = new Map();
 
   private readonly _panel: vscode.WebviewPanel;
@@ -351,7 +351,7 @@ export class KanbanPanel {
 
           if (archived) {
             await this._save();
-            await vscode.commands.executeCommand('md-kanban.refreshBoards').then(undefined, () => undefined);
+            await vscode.commands.executeCommand('md-kanban-jp.refreshBoards').then(undefined, () => undefined);
             this._sendBoardUpdate();
             this._panel.webview.postMessage({
               type: 'archiveResult',
