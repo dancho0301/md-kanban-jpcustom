@@ -17,8 +17,8 @@ class KanbanBoardItem extends vscode.TreeItem {
     this.description = vscode.workspace.asRelativePath(vscode.Uri.joinPath(uri, '..'));
     this.contextValue = 'kanbanBoard';
     this.command = {
-      command: 'md-kanban.openBoardFile',
-      title: 'Open Kanban Board',
+      command: 'md-kanban-jp.openBoardFile',
+      title: 'カンバンボードを開く',
       arguments: [uri],
     };
   }
@@ -61,17 +61,17 @@ const TODO_DEFAULT_INCLUDE = ['**/*'];
 const TODO_DEFAULT_EXCLUDE = ['**/node_modules/**', '**/out/**', '**/dist/**', '**/build/**', '**/coverage/**'];
 const TODO_REQUIRED_EXCLUDE = ['**/.git/**', '**/*.kanban.md', '**/kanban.md', '**/.kanban.md'];
 const TODO_DEFAULT_KEYWORDS = ['TODO', 'FIXME', 'BUG', 'HACK', 'NOTE'];
-const COMPLETED_COLUMN_DEFAULT_GLOBS = ['Done', 'Closed', 'Shipped', 'Archived'];
+const COMPLETED_COLUMN_DEFAULT_GLOBS = ['完了', 'クローズ', 'リリース済み', 'アーカイブ済み', 'Done', 'Closed', 'Shipped', 'Archived'];
 
 type CodeTodoNode = CodeTodoFolderItem | CodeTodoFileItem | CodeTodoItem;
 type OverdueTaskNode = OverdueDateItem | OverdueTaskItem;
 type TimelineBucketId = 'today' | 'this-week' | 'next-week' | 'later';
 
 const TIMELINE_BUCKETS: Array<{ id: TimelineBucketId; label: string; description: string; icon: string }> = [
-  { id: 'today', label: 'Today', description: 'Due today', icon: 'calendar' },
-  { id: 'this-week', label: 'This Week', description: 'Due later this week', icon: 'calendar' },
-  { id: 'next-week', label: 'Next Week', description: 'Due next week', icon: 'calendar' },
-  { id: 'later', label: 'Later', description: 'Due after next week', icon: 'calendar' },
+  { id: 'today', label: '今日', description: '本日期限', icon: 'calendar' },
+  { id: 'this-week', label: '今週', description: '今週中に期限', icon: 'calendar' },
+  { id: 'next-week', label: '来週', description: '来週中に期限', icon: 'calendar' },
+  { id: 'later', label: '今後', description: '再来週以降に期限', icon: 'calendar' },
 ];
 
 interface OverdueTask {
@@ -146,8 +146,8 @@ class CodeTodoItem extends vscode.TreeItem {
     this.iconPath = iconUri;
     this.contextValue = 'codeTodo';
     this.command = {
-      command: 'md-kanban.openCodeTodo',
-      title: 'Open TODO',
+      command: 'md-kanban-jp.openCodeTodo',
+      title: 'TODOを開く',
       arguments: [todo],
     };
   }
@@ -204,20 +204,20 @@ class OverdueDateItem extends vscode.TreeItem {
 class OverdueTaskItem extends vscode.TreeItem {
   constructor(public readonly task: OverdueTask) {
     super(task.title, vscode.TreeItemCollapsibleState.None);
-    const dayLabel = task.daysOverdue === 1 ? '1 day overdue' : `${task.daysOverdue} days overdue`;
+    const dayLabel = `${task.daysOverdue}日超過`;
     this.description = `${task.boardTitle} • ${task.columnName}`;
     this.tooltip = [
       dayLabel,
-      `Board: ${task.boardTitle}`,
-      `Column: ${task.columnName}`,
-      task.assignee ? `Assignee: ${task.assignee}` : '',
-      task.priority ? `Priority: ${task.priority}` : '',
+      `ボード: ${task.boardTitle}`,
+      `列: ${task.columnName}`,
+      task.assignee ? `担当者: ${task.assignee}` : '',
+      task.priority ? `優先度: ${task.priority}` : '',
     ].filter(Boolean).join('\n');
     this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
     this.contextValue = 'overdueTask';
     this.command = {
-      command: 'md-kanban.openOverdueTask',
-      title: 'Open Overdue Task',
+      command: 'md-kanban-jp.openOverdueTask',
+      title: '期限超過タスクを開く',
       arguments: [task],
     };
   }
@@ -283,14 +283,14 @@ class CalendarWebviewProvider implements vscode.WebviewViewProvider {
     this.mode = 'calendar';
     this.updateModeContext();
     await this.refresh();
-    await vscode.commands.executeCommand('md-kanban.calendar.focus');
+    await vscode.commands.executeCommand('md-kanban-jp.calendar.focus');
   }
 
   async showTimeline(): Promise<void> {
     this.mode = 'timeline';
     this.updateModeContext();
     await this.refresh();
-    await vscode.commands.executeCommand('md-kanban.calendar.focus');
+    await vscode.commands.executeCommand('md-kanban-jp.calendar.focus');
   }
 
   private async handleMessage(message: { type?: string; date?: string; taskId?: string }) {
@@ -354,8 +354,8 @@ class CalendarWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   private updateModeContext(): void {
-    vscode.commands.executeCommand('setContext', 'mdKanban.calendarModeCalendar', this.mode === 'calendar');
-    vscode.commands.executeCommand('setContext', 'mdKanban.calendarModeTimeline', this.mode === 'timeline');
+    vscode.commands.executeCommand('setContext', 'mdKanbanJp.calendarModeCalendar', this.mode === 'calendar');
+    vscode.commands.executeCommand('setContext', 'mdKanbanJp.calendarModeTimeline', this.mode === 'timeline');
   }
 }
 
@@ -366,63 +366,65 @@ export function activate(context: vscode.ExtensionContext) {
   );
   const overdueProvider = new OverdueTasksProvider();
   const calendarProvider = new CalendarWebviewProvider(context.extensionUri);
-  const boardsView = vscode.window.createTreeView('md-kanban.boards', {
+  const boardsView = vscode.window.createTreeView('md-kanban-jp.boards', {
     treeDataProvider: boardsProvider,
     showCollapseAll: false,
   });
   context.subscriptions.push(boardsView);
 
-  const todosView = vscode.window.createTreeView('md-kanban.codeTodos', {
+  const todosView = vscode.window.createTreeView('md-kanban-jp.codeTodos', {
     treeDataProvider: todosProvider,
     showCollapseAll: false,
   });
   context.subscriptions.push(todosView);
 
-  const overdueView = vscode.window.createTreeView('md-kanban.overdueTasks', {
+  const overdueView = vscode.window.createTreeView('md-kanban-jp.overdueTasks', {
     treeDataProvider: overdueProvider,
     showCollapseAll: true,
   });
   context.subscriptions.push(overdueView);
 
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('md-kanban.calendar', calendarProvider)
+    vscode.window.registerWebviewViewProvider('md-kanban-jp.calendar', calendarProvider)
+  );
+
+  // Board and TODO scans can be triggered by bursts of file-system events
+  // (e.g. a git checkout touching many files). Debounce so we scan once the
+  // burst settles instead of re-scanning the whole workspace per event.
+  const refreshBoards = debounce(() => {
+    boardsProvider.refresh();
+    overdueProvider.refresh();
+    calendarProvider.refresh();
+  }, 300);
+  const refreshTodos = debounce(() => todosProvider.refresh(), 400);
+  context.subscriptions.push(
+    { dispose: () => refreshBoards.dispose() },
+    { dispose: () => refreshTodos.dispose() }
   );
 
   const boardWatcher = vscode.workspace.createFileSystemWatcher('**/*kanban.md');
-  boardWatcher.onDidCreate(() => {
-    boardsProvider.refresh();
-    overdueProvider.refresh();
-    calendarProvider.refresh();
-  });
-  boardWatcher.onDidDelete(() => {
-    boardsProvider.refresh();
-    overdueProvider.refresh();
-    calendarProvider.refresh();
-  });
-  boardWatcher.onDidChange(() => {
-    boardsProvider.refresh();
-    overdueProvider.refresh();
-    calendarProvider.refresh();
-  });
+  boardWatcher.onDidCreate(() => refreshBoards.run());
+  boardWatcher.onDidDelete(() => refreshBoards.run());
+  boardWatcher.onDidChange(() => refreshBoards.run());
   context.subscriptions.push(boardWatcher);
 
   const codeWatcher = vscode.workspace.createFileSystemWatcher('**/*');
-  codeWatcher.onDidCreate(() => todosProvider.refresh());
-  codeWatcher.onDidDelete(() => todosProvider.refresh());
-  codeWatcher.onDidChange(() => todosProvider.refresh());
+  codeWatcher.onDidCreate(() => refreshTodos.run());
+  codeWatcher.onDidDelete(() => refreshTodos.run());
+  codeWatcher.onDidChange(() => refreshTodos.run());
   context.subscriptions.push(codeWatcher);
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(event => {
       if (
-        event.affectsConfiguration('mdKanban.todoInclude') ||
-        event.affectsConfiguration('mdKanban.todoExclude') ||
-        event.affectsConfiguration('mdKanban.todoKeywords')
+        event.affectsConfiguration('mdKanbanJp.todoInclude') ||
+        event.affectsConfiguration('mdKanbanJp.todoExclude') ||
+        event.affectsConfiguration('mdKanbanJp.todoKeywords')
       ) {
         todosProvider.refresh();
       }
 
-      if (event.affectsConfiguration('mdKanban.completedColumnGlobs')) {
+      if (event.affectsConfiguration('mdKanbanJp.completedColumnGlobs')) {
         overdueProvider.refresh();
         calendarProvider.refresh();
       }
@@ -430,15 +432,15 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.openBoard', async () => {
+    vscode.commands.registerCommand('md-kanban-jp.openBoard', async () => {
       const files = await findKanbanBoards(20);
 
       if (files.length === 0) {
         const create = await vscode.window.showInformationMessage(
-          'No kanban board files found. Create one?',
-          'Create'
+          'カンバンボードファイルが見つかりません。作成しますか?',
+          '作成'
         );
-        if (create === 'Create') {
+        if (create === '作成') {
           await createNewBoard(context.extensionUri);
         }
         return;
@@ -454,7 +456,7 @@ export function activate(context: vscode.ExtensionContext) {
           label: vscode.workspace.asRelativePath(f),
           uri: f,
         })),
-        { placeHolder: 'Select a Kanban board to open' }
+        { placeHolder: '開くカンバンボードを選択' }
       );
 
       if (picked) {
@@ -464,18 +466,18 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.openBoardFile', async (target: vscode.Uri | KanbanBoardItem | { uri?: vscode.Uri }) => {
+    vscode.commands.registerCommand('md-kanban-jp.openBoardFile', async (target: vscode.Uri | KanbanBoardItem | { uri?: vscode.Uri }) => {
       const fileUri = getBoardUriFromTarget(target) ?? getActiveBoardUri();
       if (fileUri) {
         KanbanPanel.createOrShow(fileUri, context.extensionUri);
       } else {
-        vscode.window.showErrorMessage('Could not open the selected Kanban board.');
+        vscode.window.showErrorMessage('選択したカンバンボードを開けませんでした。');
       }
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.createBoard', async () => {
+    vscode.commands.registerCommand('md-kanban-jp.createBoard', async () => {
       const created = await createNewBoard(context.extensionUri);
       if (created) {
         boardsProvider.refresh();
@@ -484,42 +486,42 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.refreshBoards', () => boardsProvider.refresh())
+    vscode.commands.registerCommand('md-kanban-jp.refreshBoards', () => boardsProvider.refresh())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.refreshCodeTodos', () => todosProvider.refresh())
+    vscode.commands.registerCommand('md-kanban-jp.refreshCodeTodos', () => todosProvider.refresh())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.refreshOverdueTasks', () => overdueProvider.refresh())
+    vscode.commands.registerCommand('md-kanban-jp.refreshOverdueTasks', () => overdueProvider.refresh())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.showOverdueTasks', async () => {
+    vscode.commands.registerCommand('md-kanban-jp.showOverdueTasks', async () => {
       overdueProvider.refresh();
-      await vscode.commands.executeCommand('md-kanban.overdueTasks.focus');
+      await vscode.commands.executeCommand('md-kanban-jp.overdueTasks.focus');
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.refreshTimeline', () => calendarProvider.refresh())
+    vscode.commands.registerCommand('md-kanban-jp.refreshTimeline', () => calendarProvider.refresh())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.showTimeline', () => calendarProvider.showTimeline())
+    vscode.commands.registerCommand('md-kanban-jp.showTimeline', () => calendarProvider.showTimeline())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.refreshCalendar', () => calendarProvider.refresh())
+    vscode.commands.registerCommand('md-kanban-jp.refreshCalendar', () => calendarProvider.refresh())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.showCalendar', () => calendarProvider.showCalendar())
+    vscode.commands.registerCommand('md-kanban-jp.showCalendar', () => calendarProvider.showCalendar())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.openCodeTodo', async (target: CodeTodo | CodeTodoItem) => {
+    vscode.commands.registerCommand('md-kanban-jp.openCodeTodo', async (target: CodeTodo | CodeTodoItem) => {
       const todo = target instanceof CodeTodoItem ? target.todo : target;
       if (!todo || !todo.uri) {
         return;
@@ -534,10 +536,10 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.addTodoToBoard', async (target: CodeTodo | CodeTodoItem) => {
+    vscode.commands.registerCommand('md-kanban-jp.addTodoToBoard', async (target: CodeTodo | CodeTodoItem) => {
       const todo = target instanceof CodeTodoItem ? target.todo : target;
       if (!todo || !todo.uri) {
-        vscode.window.showErrorMessage('Could not find the selected TODO.');
+        vscode.window.showErrorMessage('選択したTODOが見つかりませんでした。');
         return;
       }
 
@@ -545,14 +547,14 @@ export function activate(context: vscode.ExtensionContext) {
       if (added) {
         boardsProvider.refresh();
         vscode.window.showInformationMessage(
-          `Added TODO to ${vscode.workspace.asRelativePath(added.boardUri)} in ${added.columnName}.`
+          `TODOを${vscode.workspace.asRelativePath(added.boardUri)}の${added.columnName}に追加しました。`
         );
       }
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('md-kanban.openOverdueTask', async (target: OverdueTask | OverdueTaskItem) => {
+    vscode.commands.registerCommand('md-kanban-jp.openOverdueTask', async (target: OverdueTask | OverdueTaskItem) => {
       const task = target instanceof OverdueTaskItem ? target.task : target;
       if (task?.boardUri) {
         KanbanPanel.createOrShow(task.boardUri, context.extensionUri, task.taskId);
@@ -679,7 +681,7 @@ function buildOverdueTaskTree(tasks: OverdueTask[]): OverdueDateItem[] {
   for (const date of roots) {
     const count = date.tasks.length;
     const maxDaysOverdue = Math.max(...date.tasks.map(task => task.daysOverdue));
-    date.description = `${count} card${count === 1 ? '' : 's'} • ${maxDaysOverdue}d overdue`;
+    date.description = `${count}件のカード • ${maxDaysOverdue}日超過`;
     date.tooltip = `${date.dueDate}\n${date.description}`;
   }
 
@@ -819,18 +821,51 @@ function getTimelineBucket(dueDate: Date, today: Date): TimelineBucketId {
   return 'later';
 }
 
+function debounce(fn: () => void, delayMs: number): { run: () => void; dispose: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return {
+    run: () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      timer = setTimeout(() => {
+        timer = undefined;
+        fn();
+      }, delayMs);
+    },
+    dispose: () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+    },
+  };
+}
+
+function getNonce(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let nonce = '';
+  for (let i = 0; i < 32; i++) {
+    nonce += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return nonce;
+}
+
 function renderTimelineHtml(tasks: TimelineTask[]): string {
   const grouped = groupTimelineTasks(tasks);
   const payload = JSON.stringify({ buckets: TIMELINE_BUCKETS.map(bucket => ({
     ...bucket,
     tasks: grouped.get(bucket.id) || [],
   })) }).replace(/</g, '\\u003c');
+  const nonce = getNonce();
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <style>
     body {
       margin: 0;
@@ -945,7 +980,7 @@ function renderTimelineHtml(tasks: TimelineTask[]): string {
 </head>
 <body>
   <div id="timeline"></div>
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const data = ${payload};
     const timeline = document.getElementById('timeline');
@@ -953,7 +988,7 @@ function renderTimelineHtml(tasks: TimelineTask[]): string {
     if (visibleBuckets.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.textContent = 'No upcoming dated cards.';
+      empty.textContent = '今後の期限付きカードはありません。';
       timeline.appendChild(empty);
     }
 
@@ -1033,7 +1068,7 @@ function groupTimelineTasks(tasks: TimelineTask[]): Map<TimelineBucketId, Timeli
 
 function renderCalendarHtml(visibleMonth: Date, tasks: CalendarTask[]): string {
   const monthStart = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
-  const monthLabel = monthStart.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const monthLabel = monthStart.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long' });
   const todayIso = toDateIso(getTodayStart());
   const tasksByDate = groupCalendarTasksByDate(tasks);
   const cells = getCalendarCells(monthStart).map(date => {
@@ -1051,12 +1086,15 @@ function renderCalendarHtml(visibleMonth: Date, tasks: CalendarTask[]): string {
     };
   });
   const payload = JSON.stringify({ monthLabel, cells }).replace(/</g, '\\u003c');
+  const nonce = getNonce();
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <style>
     :root {
       color-scheme: light dark;
@@ -1189,23 +1227,23 @@ function renderCalendarHtml(visibleMonth: Date, tasks: CalendarTask[]): string {
 </head>
 <body>
   <div class="calendar-header">
-    <button class="nav-button" type="button" data-action="prevMonth" title="Previous month">&lsaquo;</button>
+    <button class="nav-button" type="button" data-action="prevMonth" title="前の月">&lsaquo;</button>
     <div class="calendar-title" id="month-title"></div>
-    <button class="nav-button" type="button" data-action="nextMonth" title="Next month">&rsaquo;</button>
-    <button class="nav-button" type="button" data-action="today" title="Today">&#9673;</button>
+    <button class="nav-button" type="button" data-action="nextMonth" title="次の月">&rsaquo;</button>
+    <button class="nav-button" type="button" data-action="today" title="今日">&#9673;</button>
   </div>
   <div class="weekday-grid">
-    <div class="weekday">Mon</div>
-    <div class="weekday">Tue</div>
-    <div class="weekday">Wed</div>
-    <div class="weekday">Thu</div>
-    <div class="weekday">Fri</div>
-    <div class="weekday">Sat</div>
-    <div class="weekday">Sun</div>
+    <div class="weekday">月</div>
+    <div class="weekday">火</div>
+    <div class="weekday">水</div>
+    <div class="weekday">木</div>
+    <div class="weekday">金</div>
+    <div class="weekday">土</div>
+    <div class="weekday">日</div>
   </div>
   <div class="calendar-grid" id="calendar-grid"></div>
-  <div class="empty" id="empty-state" hidden>No dated cards in this month.</div>
-  <script>
+  <div class="empty" id="empty-state" hidden>今月には期限付きのカードがありません。</div>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const data = ${payload};
     document.getElementById('month-title').textContent = data.monthLabel;
@@ -1485,14 +1523,14 @@ async function createNewBoard(extensionUri: vscode.Uri): Promise<vscode.Uri | un
 
 async function createBoardFile(): Promise<vscode.Uri | undefined> {
   const name = await vscode.window.showInputBox({
-    prompt: 'Enter a name for the Kanban board',
+    prompt: 'カンバンボードの名前を入力してください',
     value: 'project',
     validateInput: (v) => {
       if (!v || v.trim().length === 0) {
-        return 'Name cannot be empty';
+        return '名前を空にすることはできません';
       }
       if (!/^[a-zA-Z0-9_-]+$/.test(v.trim())) {
-        return 'Use only letters, numbers, hyphens and underscores';
+        return '半角英数字、ハイフン、アンダースコアのみ使用できます';
       }
       return undefined;
     },
@@ -1509,7 +1547,7 @@ async function createBoardFile(): Promise<vscode.Uri | undefined> {
       templateId: template.id,
     })),
     {
-      placeHolder: 'Select a board template',
+      placeHolder: 'ボードテンプレートを選択',
     }
   );
 
@@ -1519,7 +1557,7 @@ async function createBoardFile(): Promise<vscode.Uri | undefined> {
 
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders) {
-    vscode.window.showErrorMessage('Please open a folder first.');
+    vscode.window.showErrorMessage('先にフォルダを開いてください。');
     return undefined;
   }
 
@@ -1528,10 +1566,10 @@ async function createBoardFile(): Promise<vscode.Uri | undefined> {
 
   try {
     await vscode.workspace.fs.stat(fileUri);
-    vscode.window.showWarningMessage(`${fileName} already exists.`);
+    vscode.window.showWarningMessage(`${fileName} は既に存在します。`);
   } catch {
     const content = createBoardFromTemplate(
-      name.trim().replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Board',
+      name.trim().replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' ボード',
       pickedTemplate.templateId as BoardTemplateId
     );
     await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf-8'));
@@ -1551,23 +1589,23 @@ async function addTodoToBoard(todo: CodeTodo): Promise<{ boardUri: vscode.Uri; c
     const data = await vscode.workspace.fs.readFile(boardUri);
     boardContent = Buffer.from(data).toString('utf-8');
   } catch (error) {
-    vscode.window.showErrorMessage(`Could not read board: ${getErrorMessage(error)}`);
+    vscode.window.showErrorMessage(`ボードを読み込めませんでした: ${getErrorMessage(error)}`);
     return undefined;
   }
 
   const board = parseMarkdown(boardContent);
   if (board.columns.length === 0) {
-    vscode.window.showErrorMessage('Selected board has no columns.');
+    vscode.window.showErrorMessage('選択したボードには列がありません。');
     return undefined;
   }
 
   const pickedColumn = await vscode.window.showQuickPick(
     board.columns.map(column => ({
       label: column.name,
-      description: `${column.tasks.length} card${column.tasks.length === 1 ? '' : 's'}`,
+      description: `${column.tasks.length}件のカード`,
       column,
     })),
-    { placeHolder: 'Select a target column' }
+    { placeHolder: '追加先の列を選択' }
   );
 
   if (!pickedColumn) {
@@ -1598,10 +1636,10 @@ async function pickTargetBoard(): Promise<vscode.Uri | undefined> {
 
   if (files.length === 0) {
     const create = await vscode.window.showInformationMessage(
-      'No kanban board files found. Create one?',
-      'Create'
+      'カンバンボードファイルが見つかりません。作成しますか?',
+      '作成'
     );
-    if (create !== 'Create') {
+    if (create !== '作成') {
       return undefined;
     }
     return createBoardFile();
@@ -1612,7 +1650,7 @@ async function pickTargetBoard(): Promise<vscode.Uri | undefined> {
       label: vscode.workspace.asRelativePath(uri),
       uri,
     })),
-    { placeHolder: 'Select a board for this TODO' }
+    { placeHolder: 'このTODOを追加するボードを選択' }
   );
 
   return picked?.uri;
@@ -1622,10 +1660,10 @@ function getTodoTaskDescription(todo: CodeTodo): string {
   const source = `${todo.relativePath}:${todo.line}`;
   const fileLink = getVsCodeFileLink(todo.uri, todo.line);
   return [
-    `Source: ${source}`,
-    `Backlink: ${fileLink}`,
+    `ソース: ${source}`,
+    `バックリンク: ${fileLink}`,
     '',
-    'Original TODO:',
+    '元のTODO:',
     todo.text,
   ].join('\n');
 }

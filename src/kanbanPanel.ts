@@ -5,7 +5,7 @@ import { openTaskSource } from './source';
 import { getWebviewContent } from './webviewContent';
 
 export class KanbanPanel {
-  public static readonly viewType = 'mdKanban.boardView';
+  public static readonly viewType = 'mdKanbanJp.boardView';
   private static panels: Map<string, KanbanPanel> = new Map();
 
   private readonly _panel: vscode.WebviewPanel;
@@ -27,7 +27,7 @@ export class KanbanPanel {
 
     const panel = vscode.window.createWebviewPanel(
       KanbanPanel.viewType,
-      'Kanban Board',
+      'カンバンボード',
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -79,11 +79,11 @@ export class KanbanPanel {
       this._board = parseMarkdown(content);
     } catch {
       this._board = {
-        title: 'Kanban Board',
+        title: 'カンバンボード',
         columns: [
-          { name: 'To Do', tasks: [] },
-          { name: 'In Progress', tasks: [] },
-          { name: 'Done', tasks: [] },
+          { name: '未着手', tasks: [] },
+          { name: '進行中', tasks: [] },
+          { name: '完了', tasks: [] },
         ],
       };
     }
@@ -102,7 +102,7 @@ export class KanbanPanel {
         setTimeout(() => this._postOpenTask(taskId), 100);
       }
     } catch {
-      vscode.window.showErrorMessage('Could not render the Kanban board. See MD Kanban output logs for details.');
+      vscode.window.showErrorMessage('カンバンボードを表示できませんでした。詳細はMD Kanbanの出力ログを確認してください。');
     }
   }
 
@@ -112,6 +112,24 @@ export class KanbanPanel {
   }
 
   private async _handleMessage(message: { type: string; [key: string]: any }) {
+    // Structural fields land on single markdown lines (# / ## / ### / #### / <!-- -->);
+    // strip newlines so webview input cannot inject headings into the board file.
+    for (const key of ['title', 'name', 'oldName', 'newName', 'column', 'fromColumn', 'toColumn', 'group', 'assignee', 'source', 'dueDate']) {
+      if (typeof message[key] === 'string') {
+        message[key] = toSingleLine(message[key]);
+      }
+    }
+    if (Array.isArray(message.tags)) {
+      message.tags = message.tags
+        .filter((tag: unknown): tag is string => typeof tag === 'string')
+        .map((tag: string) => toSingleLine(tag));
+    }
+    if (Array.isArray(message.subtasks)) {
+      message.subtasks = message.subtasks
+        .filter((subtask: any) => subtask && typeof subtask.title === 'string')
+        .map((subtask: any) => ({ title: toSingleLine(subtask.title), done: !!subtask.done }));
+    }
+
     switch (message.type) {
       case 'addTask': {
         const col = this._board.columns.find(c => c.name === message.column);
@@ -314,7 +332,7 @@ export class KanbanPanel {
       }
 
       case 'updateTitle': {
-        this._board.title = message.title || 'Kanban Board';
+        this._board.title = message.title || 'カンバンボード';
         this._panel.title = this._board.title;
         await this._save();
         break;
@@ -336,7 +354,7 @@ export class KanbanPanel {
           this._panel.webview.postMessage({
             type: 'archiveResult',
             ok: false,
-            message: 'Cards in archive.kanban.md cannot be archived again.',
+            message: 'archive.kanban.md内のカードは再度アーカイブできません。',
           });
           break;
         }
@@ -351,30 +369,30 @@ export class KanbanPanel {
 
           if (archived) {
             await this._save();
-            await vscode.commands.executeCommand('md-kanban.refreshBoards').then(undefined, () => undefined);
+            await vscode.commands.executeCommand('md-kanban-jp.refreshBoards').then(undefined, () => undefined);
             this._sendBoardUpdate();
             this._panel.webview.postMessage({
               type: 'archiveResult',
               ok: true,
-              message: `Archived card to archive.kanban.md in ${archived.archiveColumnName}.`,
+              message: `カードをarchive.kanban.mdの${archived.archiveColumnName}にアーカイブしました。`,
             });
-            vscode.window.showInformationMessage(`Archived card to archive.kanban.md in ${archived.archiveColumnName}.`);
+            vscode.window.showInformationMessage(`カードをarchive.kanban.mdの${archived.archiveColumnName}にアーカイブしました。`);
           } else {
             this._panel.webview.postMessage({
               type: 'archiveResult',
               ok: false,
-              message: 'Card was not found.',
+              message: 'カードが見つかりませんでした。',
             });
-            vscode.window.showInformationMessage('Card was not found.');
+            vscode.window.showInformationMessage('カードが見つかりませんでした。');
           }
         } catch (error) {
           const messageText = error instanceof Error ? error.message : String(error);
           this._panel.webview.postMessage({
             type: 'archiveResult',
             ok: false,
-            message: `Could not archive card: ${messageText}`,
+            message: `カードをアーカイブできませんでした: ${messageText}`,
           });
-          vscode.window.showErrorMessage(`Could not archive card: ${messageText}`);
+          vscode.window.showErrorMessage(`カードをアーカイブできませんでした: ${messageText}`);
         }
         break;
       }
@@ -439,4 +457,8 @@ export class KanbanPanel {
 
 function isArchiveBoardFile(uri: vscode.Uri): boolean {
   return uri.path.split('/').pop()?.toLowerCase() === 'archive.kanban.md';
+}
+
+function toSingleLine(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ').trim();
 }
