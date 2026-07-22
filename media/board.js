@@ -949,9 +949,20 @@
       }, 100);
     });
 
+    let clickTimer = 0;
     card.addEventListener('click', (e) => {
       if (cardWasDragged || e.target.closest('button')) return;
-      openTaskDetailsModal(task, columnName);
+      // Delay the single-click action so a double-click can cancel it.
+      window.clearTimeout(clickTimer);
+      clickTimer = window.setTimeout(() => {
+        openTaskDetailsModal(task, columnName);
+      }, 220);
+    });
+
+    card.addEventListener('dblclick', (e) => {
+      if (cardWasDragged || e.target.closest('button')) return;
+      window.clearTimeout(clickTimer);
+      openTaskModal(task, columnName);
     });
 
     const titleEl = el('div', 'card-title');
