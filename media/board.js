@@ -949,19 +949,8 @@
       }, 100);
     });
 
-    let clickTimer = 0;
     card.addEventListener('click', (e) => {
       if (cardWasDragged || e.target.closest('button')) return;
-      // Delay the single-click action so a double-click can cancel it.
-      window.clearTimeout(clickTimer);
-      clickTimer = window.setTimeout(() => {
-        openTaskDetailsModal(task, columnName);
-      }, 220);
-    });
-
-    card.addEventListener('dblclick', (e) => {
-      if (cardWasDragged || e.target.closest('button')) return;
-      window.clearTimeout(clickTimer);
       openTaskModal(task, columnName);
     });
 
@@ -1663,8 +1652,34 @@
     }
 
     const actions = el('div', 'modal-actions');
+
+    // Destructive/secondary actions on the left (edit mode only)
+    if (existingTask) {
+      const deleteBtn = el('button', 'danger');
+      deleteBtn.type = 'button';
+      deleteBtn.textContent = '削除';
+      deleteBtn.onclick = () => {
+        deleteTask(existingTask, () => overlay.remove());
+      };
+      actions.appendChild(deleteBtn);
+
+      if (boardConfig.canArchiveCards !== false) {
+        const archiveBtn = el('button', 'archive-action');
+        archiveBtn.type = 'button';
+        archiveBtn.textContent = 'アーカイブ';
+        archiveBtn.onclick = () => {
+          archiveTask(existingTask, columnName, () => overlay.remove());
+        };
+        actions.appendChild(archiveBtn);
+      }
+    }
+
     const cancelBtn = el('button', 'secondary');
     cancelBtn.textContent = 'キャンセル';
+    // Push cancel/save to the right when left-side actions are present.
+    if (existingTask) {
+      cancelBtn.style.marginLeft = 'auto';
+    }
     cancelBtn.onclick = () => overlay.remove();
     actions.appendChild(cancelBtn);
 
