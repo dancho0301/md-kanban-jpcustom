@@ -1564,12 +1564,9 @@
     dueDateInput.value = existingTask ? (existingTask.dueDate || '') : '';
     modal.appendChild(dueDateInput);
 
-    modal.appendChild(labelEl('ソース'));
-    const sourceInput = el('input');
-    sourceInput.type = 'text';
-    sourceInput.value = existingTask ? (existingTask.source || '') : '';
-    sourceInput.placeholder = 'src/foo.ts:42';
-    modal.appendChild(sourceInput);
+    // Source is not user-editable in the form, but preserve any existing
+    // value (e.g. TODO-import backlinks) so editing a task does not drop it.
+    let sourceValue = existingTask ? (existingTask.source || '') : '';
 
     // Subtasks
     modal.appendChild(labelEl('サブタスク'));
@@ -1641,7 +1638,7 @@
       priSelect.value = template.priority || 'medium';
       wlSelect.value = template.workload || 'normal';
       dueDateInput.value = '';
-      sourceInput.value = '';
+      sourceValue = '';
       subtasks = (template.subtasks || []).map(st => ({ ...st }));
       tagsInput.value = (template.tags || []).join(', ');
       renderSubtasks();
@@ -1707,7 +1704,7 @@
           dueDate: dueDateInput.value,
           subtasks: validSubtasks,
           assignee: assigneeInput.value.trim(),
-          source: sourceInput.value.trim(),
+          source: sourceValue,
           group: groupInput.value.trim(),
         });
       } else {
@@ -1722,7 +1719,7 @@
           dueDate: dueDateInput.value,
           subtasks: validSubtasks,
           assignee: assigneeInput.value.trim(),
-          source: sourceInput.value.trim(),
+          source: sourceValue,
           group: groupInput.value.trim(),
         });
       }

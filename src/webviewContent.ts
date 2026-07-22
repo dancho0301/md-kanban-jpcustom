@@ -939,7 +939,7 @@ export function getWebviewContent(
 
     .modal textarea {
       resize: vertical;
-      min-height: 60px;
+      min-height: 140px;
     }
 
     .modal .remember-row {
