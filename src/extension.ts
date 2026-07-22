@@ -18,7 +18,7 @@ class KanbanBoardItem extends vscode.TreeItem {
     this.contextValue = 'kanbanBoard';
     this.command = {
       command: 'md-kanban.openBoardFile',
-      title: 'Open Kanban Board',
+      title: 'カンバンボードを開く',
       arguments: [uri],
     };
   }
@@ -61,17 +61,17 @@ const TODO_DEFAULT_INCLUDE = ['**/*'];
 const TODO_DEFAULT_EXCLUDE = ['**/node_modules/**', '**/out/**', '**/dist/**', '**/build/**', '**/coverage/**'];
 const TODO_REQUIRED_EXCLUDE = ['**/.git/**', '**/*.kanban.md', '**/kanban.md', '**/.kanban.md'];
 const TODO_DEFAULT_KEYWORDS = ['TODO', 'FIXME', 'BUG', 'HACK', 'NOTE'];
-const COMPLETED_COLUMN_DEFAULT_GLOBS = ['Done', 'Closed', 'Shipped', 'Archived'];
+const COMPLETED_COLUMN_DEFAULT_GLOBS = ['完了', 'クローズ', 'リリース済み', 'アーカイブ済み', 'Done', 'Closed', 'Shipped', 'Archived'];
 
 type CodeTodoNode = CodeTodoFolderItem | CodeTodoFileItem | CodeTodoItem;
 type OverdueTaskNode = OverdueDateItem | OverdueTaskItem;
 type TimelineBucketId = 'today' | 'this-week' | 'next-week' | 'later';
 
 const TIMELINE_BUCKETS: Array<{ id: TimelineBucketId; label: string; description: string; icon: string }> = [
-  { id: 'today', label: 'Today', description: 'Due today', icon: 'calendar' },
-  { id: 'this-week', label: 'This Week', description: 'Due later this week', icon: 'calendar' },
-  { id: 'next-week', label: 'Next Week', description: 'Due next week', icon: 'calendar' },
-  { id: 'later', label: 'Later', description: 'Due after next week', icon: 'calendar' },
+  { id: 'today', label: '今日', description: '本日期限', icon: 'calendar' },
+  { id: 'this-week', label: '今週', description: '今週中に期限', icon: 'calendar' },
+  { id: 'next-week', label: '来週', description: '来週中に期限', icon: 'calendar' },
+  { id: 'later', label: '今後', description: '再来週以降に期限', icon: 'calendar' },
 ];
 
 interface OverdueTask {
@@ -147,7 +147,7 @@ class CodeTodoItem extends vscode.TreeItem {
     this.contextValue = 'codeTodo';
     this.command = {
       command: 'md-kanban.openCodeTodo',
-      title: 'Open TODO',
+      title: 'TODOを開く',
       arguments: [todo],
     };
   }
@@ -204,20 +204,20 @@ class OverdueDateItem extends vscode.TreeItem {
 class OverdueTaskItem extends vscode.TreeItem {
   constructor(public readonly task: OverdueTask) {
     super(task.title, vscode.TreeItemCollapsibleState.None);
-    const dayLabel = task.daysOverdue === 1 ? '1 day overdue' : `${task.daysOverdue} days overdue`;
+    const dayLabel = `${task.daysOverdue}日超過`;
     this.description = `${task.boardTitle} • ${task.columnName}`;
     this.tooltip = [
       dayLabel,
-      `Board: ${task.boardTitle}`,
-      `Column: ${task.columnName}`,
-      task.assignee ? `Assignee: ${task.assignee}` : '',
-      task.priority ? `Priority: ${task.priority}` : '',
+      `ボード: ${task.boardTitle}`,
+      `列: ${task.columnName}`,
+      task.assignee ? `担当者: ${task.assignee}` : '',
+      task.priority ? `優先度: ${task.priority}` : '',
     ].filter(Boolean).join('\n');
     this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
     this.contextValue = 'overdueTask';
     this.command = {
       command: 'md-kanban.openOverdueTask',
-      title: 'Open Overdue Task',
+      title: '期限超過タスクを開く',
       arguments: [task],
     };
   }
@@ -435,10 +435,10 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (files.length === 0) {
         const create = await vscode.window.showInformationMessage(
-          'No kanban board files found. Create one?',
-          'Create'
+          'カンバンボードファイルが見つかりません。作成しますか?',
+          '作成'
         );
-        if (create === 'Create') {
+        if (create === '作成') {
           await createNewBoard(context.extensionUri);
         }
         return;
@@ -454,7 +454,7 @@ export function activate(context: vscode.ExtensionContext) {
           label: vscode.workspace.asRelativePath(f),
           uri: f,
         })),
-        { placeHolder: 'Select a Kanban board to open' }
+        { placeHolder: '開くカンバンボードを選択' }
       );
 
       if (picked) {
@@ -469,7 +469,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (fileUri) {
         KanbanPanel.createOrShow(fileUri, context.extensionUri);
       } else {
-        vscode.window.showErrorMessage('Could not open the selected Kanban board.');
+        vscode.window.showErrorMessage('選択したカンバンボードを開けませんでした。');
       }
     })
   );
@@ -537,7 +537,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('md-kanban.addTodoToBoard', async (target: CodeTodo | CodeTodoItem) => {
       const todo = target instanceof CodeTodoItem ? target.todo : target;
       if (!todo || !todo.uri) {
-        vscode.window.showErrorMessage('Could not find the selected TODO.');
+        vscode.window.showErrorMessage('選択したTODOが見つかりませんでした。');
         return;
       }
 
@@ -545,7 +545,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (added) {
         boardsProvider.refresh();
         vscode.window.showInformationMessage(
-          `Added TODO to ${vscode.workspace.asRelativePath(added.boardUri)} in ${added.columnName}.`
+          `TODOを${vscode.workspace.asRelativePath(added.boardUri)}の${added.columnName}に追加しました。`
         );
       }
     })
@@ -679,7 +679,7 @@ function buildOverdueTaskTree(tasks: OverdueTask[]): OverdueDateItem[] {
   for (const date of roots) {
     const count = date.tasks.length;
     const maxDaysOverdue = Math.max(...date.tasks.map(task => task.daysOverdue));
-    date.description = `${count} card${count === 1 ? '' : 's'} • ${maxDaysOverdue}d overdue`;
+    date.description = `${count}件のカード • ${maxDaysOverdue}日超過`;
     date.tooltip = `${date.dueDate}\n${date.description}`;
   }
 
@@ -827,7 +827,7 @@ function renderTimelineHtml(tasks: TimelineTask[]): string {
   })) }).replace(/</g, '\\u003c');
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -953,7 +953,7 @@ function renderTimelineHtml(tasks: TimelineTask[]): string {
     if (visibleBuckets.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.textContent = 'No upcoming dated cards.';
+      empty.textContent = '今後の期限付きカードはありません。';
       timeline.appendChild(empty);
     }
 
@@ -1053,7 +1053,7 @@ function renderCalendarHtml(visibleMonth: Date, tasks: CalendarTask[]): string {
   const payload = JSON.stringify({ monthLabel, cells }).replace(/</g, '\\u003c');
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1189,22 +1189,22 @@ function renderCalendarHtml(visibleMonth: Date, tasks: CalendarTask[]): string {
 </head>
 <body>
   <div class="calendar-header">
-    <button class="nav-button" type="button" data-action="prevMonth" title="Previous month">&lsaquo;</button>
+    <button class="nav-button" type="button" data-action="prevMonth" title="前の月">&lsaquo;</button>
     <div class="calendar-title" id="month-title"></div>
-    <button class="nav-button" type="button" data-action="nextMonth" title="Next month">&rsaquo;</button>
-    <button class="nav-button" type="button" data-action="today" title="Today">&#9673;</button>
+    <button class="nav-button" type="button" data-action="nextMonth" title="次の月">&rsaquo;</button>
+    <button class="nav-button" type="button" data-action="today" title="今日">&#9673;</button>
   </div>
   <div class="weekday-grid">
-    <div class="weekday">Mon</div>
-    <div class="weekday">Tue</div>
-    <div class="weekday">Wed</div>
-    <div class="weekday">Thu</div>
-    <div class="weekday">Fri</div>
-    <div class="weekday">Sat</div>
-    <div class="weekday">Sun</div>
+    <div class="weekday">月</div>
+    <div class="weekday">火</div>
+    <div class="weekday">水</div>
+    <div class="weekday">木</div>
+    <div class="weekday">金</div>
+    <div class="weekday">土</div>
+    <div class="weekday">日</div>
   </div>
   <div class="calendar-grid" id="calendar-grid"></div>
-  <div class="empty" id="empty-state" hidden>No dated cards in this month.</div>
+  <div class="empty" id="empty-state" hidden>今月には期限付きのカードがありません。</div>
   <script>
     const vscode = acquireVsCodeApi();
     const data = ${payload};
@@ -1485,14 +1485,14 @@ async function createNewBoard(extensionUri: vscode.Uri): Promise<vscode.Uri | un
 
 async function createBoardFile(): Promise<vscode.Uri | undefined> {
   const name = await vscode.window.showInputBox({
-    prompt: 'Enter a name for the Kanban board',
+    prompt: 'カンバンボードの名前を入力してください',
     value: 'project',
     validateInput: (v) => {
       if (!v || v.trim().length === 0) {
-        return 'Name cannot be empty';
+        return '名前を空にすることはできません';
       }
       if (!/^[a-zA-Z0-9_-]+$/.test(v.trim())) {
-        return 'Use only letters, numbers, hyphens and underscores';
+        return '半角英数字、ハイフン、アンダースコアのみ使用できます';
       }
       return undefined;
     },
@@ -1509,7 +1509,7 @@ async function createBoardFile(): Promise<vscode.Uri | undefined> {
       templateId: template.id,
     })),
     {
-      placeHolder: 'Select a board template',
+      placeHolder: 'ボードテンプレートを選択',
     }
   );
 
@@ -1519,7 +1519,7 @@ async function createBoardFile(): Promise<vscode.Uri | undefined> {
 
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders) {
-    vscode.window.showErrorMessage('Please open a folder first.');
+    vscode.window.showErrorMessage('先にフォルダを開いてください。');
     return undefined;
   }
 
@@ -1528,10 +1528,10 @@ async function createBoardFile(): Promise<vscode.Uri | undefined> {
 
   try {
     await vscode.workspace.fs.stat(fileUri);
-    vscode.window.showWarningMessage(`${fileName} already exists.`);
+    vscode.window.showWarningMessage(`${fileName} は既に存在します。`);
   } catch {
     const content = createBoardFromTemplate(
-      name.trim().replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Board',
+      name.trim().replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' ボード',
       pickedTemplate.templateId as BoardTemplateId
     );
     await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf-8'));
@@ -1551,23 +1551,23 @@ async function addTodoToBoard(todo: CodeTodo): Promise<{ boardUri: vscode.Uri; c
     const data = await vscode.workspace.fs.readFile(boardUri);
     boardContent = Buffer.from(data).toString('utf-8');
   } catch (error) {
-    vscode.window.showErrorMessage(`Could not read board: ${getErrorMessage(error)}`);
+    vscode.window.showErrorMessage(`ボードを読み込めませんでした: ${getErrorMessage(error)}`);
     return undefined;
   }
 
   const board = parseMarkdown(boardContent);
   if (board.columns.length === 0) {
-    vscode.window.showErrorMessage('Selected board has no columns.');
+    vscode.window.showErrorMessage('選択したボードには列がありません。');
     return undefined;
   }
 
   const pickedColumn = await vscode.window.showQuickPick(
     board.columns.map(column => ({
       label: column.name,
-      description: `${column.tasks.length} card${column.tasks.length === 1 ? '' : 's'}`,
+      description: `${column.tasks.length}件のカード`,
       column,
     })),
-    { placeHolder: 'Select a target column' }
+    { placeHolder: '追加先の列を選択' }
   );
 
   if (!pickedColumn) {
@@ -1598,10 +1598,10 @@ async function pickTargetBoard(): Promise<vscode.Uri | undefined> {
 
   if (files.length === 0) {
     const create = await vscode.window.showInformationMessage(
-      'No kanban board files found. Create one?',
-      'Create'
+      'カンバンボードファイルが見つかりません。作成しますか?',
+      '作成'
     );
-    if (create !== 'Create') {
+    if (create !== '作成') {
       return undefined;
     }
     return createBoardFile();
@@ -1612,7 +1612,7 @@ async function pickTargetBoard(): Promise<vscode.Uri | undefined> {
       label: vscode.workspace.asRelativePath(uri),
       uri,
     })),
-    { placeHolder: 'Select a board for this TODO' }
+    { placeHolder: 'このTODOを追加するボードを選択' }
   );
 
   return picked?.uri;
@@ -1622,10 +1622,10 @@ function getTodoTaskDescription(todo: CodeTodo): string {
   const source = `${todo.relativePath}:${todo.line}`;
   const fileLink = getVsCodeFileLink(todo.uri, todo.line);
   return [
-    `Source: ${source}`,
-    `Backlink: ${fileLink}`,
+    `ソース: ${source}`,
+    `バックリンク: ${fileLink}`,
     '',
-    'Original TODO:',
+    '元のTODO:',
     todo.text,
   ].join('\n');
 }

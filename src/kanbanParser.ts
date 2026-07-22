@@ -42,39 +42,39 @@ export interface BoardTemplate {
 export const BOARD_TEMPLATES: BoardTemplate[] = [
   {
     id: 'blank',
-    label: 'Blank',
-    description: 'Empty board with no columns',
+    label: '空のボード',
+    description: '列のない空のボード',
     columns: [],
   },
   {
     id: 'basic',
-    label: 'Basic',
-    description: 'Simple To Do, In Progress, Done board',
-    columns: ['To Do', 'In Progress', 'Done'],
+    label: '基本',
+    description: 'シンプルな未着手・進行中・完了のボード',
+    columns: ['未着手', '進行中', '完了'],
   },
   {
     id: 'sprint',
-    label: 'Sprint',
-    description: 'Backlog through review for iteration work',
-    columns: ['Backlog', 'Ready', 'In Progress', 'Review', 'Done'],
+    label: 'スプリント',
+    description: 'バックログからレビューまでの反復作業用ボード',
+    columns: ['バックログ', '準備完了', '進行中', 'レビュー', '完了'],
   },
   {
     id: 'bug-tracker',
-    label: 'Bug Tracker',
-    description: 'Triage, fix, verify, and close bugs',
-    columns: ['Triage', 'Confirmed', 'In Progress', 'Verify', 'Closed'],
+    label: 'バグトラッカー',
+    description: 'トリアージ、修正、検証、クローズまでのバグ管理',
+    columns: ['トリアージ', '確認済み', '進行中', '検証', 'クローズ'],
   },
   {
     id: 'release-checklist',
-    label: 'Release Checklist',
-    description: 'Track release preparation through shipment',
-    columns: ['Planned', 'In Progress', 'Blocked', 'Ready', 'Shipped'],
+    label: 'リリースチェックリスト',
+    description: 'リリース準備から出荷までを追跡',
+    columns: ['計画中', '進行中', 'ブロック中', '準備完了', 'リリース済み'],
   },
   {
     id: 'personal',
-    label: 'Personal',
-    description: 'Lightweight personal planning board',
-    columns: ['Today', 'This Week', 'Waiting', 'Done'],
+    label: '個人用',
+    description: '軽量な個人向け計画ボード',
+    columns: ['今日', '今週', '保留中', '完了'],
   },
 ];
 
@@ -91,7 +91,7 @@ export const BOARD_TEMPLATES: BoardTemplate[] = [
  */
 export function parseMarkdown(content: string): KanbanBoard {
   const lines = content.split(/\r?\n/);
-  const board: KanbanBoard = { title: 'Kanban Board', columns: [] };
+  const board: KanbanBoard = { title: 'カンバンボード', columns: [] };
 
   let currentColumn: KanbanColumn | null = null;
   let currentTask: KanbanTask | null = null;
@@ -211,9 +211,9 @@ export function parseMarkdown(content: string): KanbanBoard {
   // Older empty files opened with starter columns. Blank-template boards opt out.
   if (board.columns.length === 0 && !keepEmptyBoard) {
     board.columns = [
-      { name: 'To Do', tasks: [] },
-      { name: 'In Progress', tasks: [] },
-      { name: 'Done', tasks: [] },
+      { name: '未着手', tasks: [] },
+      { name: '進行中', tasks: [] },
+      { name: '完了', tasks: [] },
     ];
   }
 
@@ -263,9 +263,9 @@ function serializeTask(lines: string[], task: KanbanTask, needsGroupOverride = f
  */
 export function serializeToMarkdown(board: KanbanBoard): string {
   const lines: string[] = [];
-  lines.push('<!-- This is a Kanban Board file created with MD Kanban extension -->');
+  lines.push('<!-- これはMD Kanban拡張機能で作成されたカンバンボードファイルです -->');
   lines.push('<!-- GitHub: https://github.com/jebakumarj/md-kanban -->');
-  lines.push('<!-- VS Code Extension: Search "MD Kanban" in the extension store (ID: jeddak.md-kanban) -->');
+  lines.push('<!-- VS Code拡張機能: 拡張機能ストアで"MD Kanban"を検索してください (ID: jeddak.md-kanban) -->');
   if (board.columns.length === 0) {
     lines.push('<!-- empty-board: true -->');
   }
@@ -303,11 +303,11 @@ export function generateId(): string {
 /**
  * Create a default empty board markdown string.
  */
-export function createDefaultBoard(title: string = 'Kanban Board'): string {
+export function createDefaultBoard(title: string = 'カンバンボード'): string {
   return createBoardFromTemplate(title, 'basic');
 }
 
-export function createBoardFromTemplate(title: string = 'Kanban Board', templateId: BoardTemplateId = 'basic'): string {
+export function createBoardFromTemplate(title: string = 'カンバンボード', templateId: BoardTemplateId = 'basic'): string {
   const template = BOARD_TEMPLATES.find(t => t.id === templateId) ?? BOARD_TEMPLATES.find(t => t.id === 'basic')!;
   const board: KanbanBoard = {
     title,

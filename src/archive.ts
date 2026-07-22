@@ -39,7 +39,7 @@ async function readArchiveBoard(archiveUri: vscode.Uri): Promise<KanbanBoard> {
     return parseMarkdown(Buffer.from(data).toString('utf-8'));
   } catch {
     return {
-      title: 'Archive Board',
+      title: 'アーカイブボード',
       columns: [],
     };
   }
@@ -98,7 +98,7 @@ function getOrCreateArchiveColumn(board: KanbanBoard, columnName: string) {
 }
 
 function getBoardFileName(uri: vscode.Uri): string {
-  return uri.path.split('/').pop() || 'Archived';
+  return uri.path.split('/').pop() || 'アーカイブ';
 }
 
 function getSiblingUri(uri: vscode.Uri, fileName: string): vscode.Uri {

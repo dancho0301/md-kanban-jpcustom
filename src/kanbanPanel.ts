@@ -27,7 +27,7 @@ export class KanbanPanel {
 
     const panel = vscode.window.createWebviewPanel(
       KanbanPanel.viewType,
-      'Kanban Board',
+      'カンバンボード',
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -79,11 +79,11 @@ export class KanbanPanel {
       this._board = parseMarkdown(content);
     } catch {
       this._board = {
-        title: 'Kanban Board',
+        title: 'カンバンボード',
         columns: [
-          { name: 'To Do', tasks: [] },
-          { name: 'In Progress', tasks: [] },
-          { name: 'Done', tasks: [] },
+          { name: '未着手', tasks: [] },
+          { name: '進行中', tasks: [] },
+          { name: '完了', tasks: [] },
         ],
       };
     }
@@ -102,7 +102,7 @@ export class KanbanPanel {
         setTimeout(() => this._postOpenTask(taskId), 100);
       }
     } catch {
-      vscode.window.showErrorMessage('Could not render the Kanban board. See MD Kanban output logs for details.');
+      vscode.window.showErrorMessage('カンバンボードを表示できませんでした。詳細はMD Kanbanの出力ログを確認してください。');
     }
   }
 
@@ -314,7 +314,7 @@ export class KanbanPanel {
       }
 
       case 'updateTitle': {
-        this._board.title = message.title || 'Kanban Board';
+        this._board.title = message.title || 'カンバンボード';
         this._panel.title = this._board.title;
         await this._save();
         break;
@@ -336,7 +336,7 @@ export class KanbanPanel {
           this._panel.webview.postMessage({
             type: 'archiveResult',
             ok: false,
-            message: 'Cards in archive.kanban.md cannot be archived again.',
+            message: 'archive.kanban.md内のカードは再度アーカイブできません。',
           });
           break;
         }
@@ -356,25 +356,25 @@ export class KanbanPanel {
             this._panel.webview.postMessage({
               type: 'archiveResult',
               ok: true,
-              message: `Archived card to archive.kanban.md in ${archived.archiveColumnName}.`,
+              message: `カードをarchive.kanban.mdの${archived.archiveColumnName}にアーカイブしました。`,
             });
-            vscode.window.showInformationMessage(`Archived card to archive.kanban.md in ${archived.archiveColumnName}.`);
+            vscode.window.showInformationMessage(`カードをarchive.kanban.mdの${archived.archiveColumnName}にアーカイブしました。`);
           } else {
             this._panel.webview.postMessage({
               type: 'archiveResult',
               ok: false,
-              message: 'Card was not found.',
+              message: 'カードが見つかりませんでした。',
             });
-            vscode.window.showInformationMessage('Card was not found.');
+            vscode.window.showInformationMessage('カードが見つかりませんでした。');
           }
         } catch (error) {
           const messageText = error instanceof Error ? error.message : String(error);
           this._panel.webview.postMessage({
             type: 'archiveResult',
             ok: false,
-            message: `Could not archive card: ${messageText}`,
+            message: `カードをアーカイブできませんでした: ${messageText}`,
           });
-          vscode.window.showErrorMessage(`Could not archive card: ${messageText}`);
+          vscode.window.showErrorMessage(`カードをアーカイブできませんでした: ${messageText}`);
         }
         break;
       }

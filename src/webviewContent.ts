@@ -18,13 +18,13 @@ export function getWebviewContent(
   );
 
   return /*html*/ `<!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none'; style-src 'unsafe-inline'; script-src ${webview.cspSource};" />
-  <title>Kanban Board</title>
+  <title>カンバンボード</title>
   <style>
     :root {
       --bg: var(--vscode-editor-background);
@@ -999,7 +999,7 @@ export function getWebviewContent(
 <body>
 
 <div id="app">
-  <div style="padding: 20px; color: var(--fg);">Loading Kanban board...</div>
+  <div style="padding: 20px; color: var(--fg);">カンバンボードを読み込み中...</div>
 </div>
 
 <script type="application/json" id="board-data">${boardJson}</script>

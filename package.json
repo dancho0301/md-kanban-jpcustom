@@ -1,7 +1,7 @@
 {
   "name": "md-kanban",
   "displayName": "MD Kanban",
-  "description": "Manage project tasks and todos in a Kanban board view, stored as Markdown files",
+  "description": "Markdownファイルとして保存されるカンバンボードでプロジェクトのタスクやTODOを管理します",
   "version": "0.4.0",
   "publisher": "jeddak",
   "license": "MIT",
@@ -51,72 +51,72 @@
     "commands": [
       {
         "command": "md-kanban.openBoard",
-        "title": "Open Kanban Board",
-        "category": "Kanban"
+        "title": "カンバンボードを開く",
+        "category": "カンバン"
       },
       {
         "command": "md-kanban.createBoard",
-        "title": "Create New Kanban Board",
-        "category": "Kanban",
+        "title": "新しいカンバンボードを作成",
+        "category": "カンバン",
         "icon": "$(add)"
       },
       {
         "command": "md-kanban.openBoardFile",
-        "title": "Open Kanban Board",
-        "category": "Kanban"
+        "title": "カンバンボードを開く",
+        "category": "カンバン"
       },
       {
         "command": "md-kanban.addTodoToBoard",
-        "title": "Add TODO to Board",
-        "category": "Kanban",
+        "title": "TODOをボードに追加",
+        "category": "カンバン",
         "icon": "$(add)"
       },
       {
         "command": "md-kanban.refreshBoards",
-        "title": "Refresh Kanban Boards",
-        "category": "Kanban",
+        "title": "カンバンボードを更新",
+        "category": "カンバン",
         "icon": "$(refresh)"
       },
       {
         "command": "md-kanban.refreshCodeTodos",
-        "title": "Refresh TODOs",
-        "category": "Kanban",
+        "title": "TODOを更新",
+        "category": "カンバン",
         "icon": "$(refresh)"
       },
       {
         "command": "md-kanban.refreshOverdueTasks",
-        "title": "Refresh Overdue Tasks",
-        "category": "Kanban",
+        "title": "期限超過タスクを更新",
+        "category": "カンバン",
         "icon": "$(refresh)"
       },
       {
         "command": "md-kanban.showOverdueTasks",
-        "title": "Show Overdue Tasks",
-        "category": "Kanban",
+        "title": "期限超過タスクを表示",
+        "category": "カンバン",
         "icon": "$(warning)"
       },
       {
         "command": "md-kanban.refreshTimeline",
-        "title": "Refresh Timeline",
-        "category": "Kanban",
+        "title": "タイムラインを更新",
+        "category": "カンバン",
         "icon": "$(refresh)"
       },
       {
         "command": "md-kanban.showTimeline",
-        "title": "Show Timeline",
-        "category": "Kanban",
+        "title": "タイムラインを表示",
+        "category": "カンバン",
         "icon": "$(list-tree)"
       },
       {
         "command": "md-kanban.refreshCalendar",
-        "title": "Refresh Calendar",
-        "category": "Kanban",
+        "title": "カレンダーを更新",
+        "category": "カンバン",
         "icon": "$(refresh)"
       },
       {
         "command": "md-kanban.showCalendar",
-        "title": "Show Calendar",
-        "category": "Kanban",
+        "title": "カレンダーを表示",
+        "category": "カンバン",
         "icon": "$(calendar)"
       }
     ],
@@ -133,19 +133,19 @@
       "md-kanban": [
         {
           "id": "md-kanban.boards",
-          "name": "Kanban Boards"
+          "name": "カンバンボード"
         },
         {
           "id": "md-kanban.codeTodos",
-          "name": "TODOs"
+          "name": "TODO"
         },
         {
           "id": "md-kanban.overdueTasks",
-          "name": "Overdue Tasks"
+          "name": "期限超過タスク"
         },
         {
           "id": "md-kanban.calendar",
-          "name": "Calendar",
+          "name": "カレンダー",
           "type": "webview"
         }
       ]
@@ -153,19 +153,19 @@
     "viewsWelcome": [
       {
         "view": "md-kanban.boards",
-        "contents": "No kanban boards found.\n[Create a Kanban Board](command:md-kanban.createBoard)"
+        "contents": "カンバンボードが見つかりません。\n[カンバンボードを作成](command:md-kanban.createBoard)"
       },
       {
         "view": "md-kanban.codeTodos",
-        "contents": "No configured TODO comments found in this workspace."
+        "contents": "このワークスペースには設定済みのTODOコメントが見つかりません。"
       },
       {
         "view": "md-kanban.overdueTasks",
-        "contents": "No overdue Kanban tasks found."
+        "contents": "期限超過のカンバンタスクは見つかりません。"
       },
       {
         "view": "md-kanban.calendar",
-        "contents": "No Kanban tasks with due dates found."
+        "contents": "期限日が設定されたカンバンタスクは見つかりません。"
       }
     ],
     "configuration": {
@@ -179,7 +179,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Glob patterns for files scanned by the MD Kanban TODO side panel."
+          "description": "MD KanbanのTODOサイドパネルでスキャンするファイルのグロブパターン。"
         },
         "mdKanban.todoExclude": {
           "type": "array",
@@ -193,7 +193,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Glob patterns excluded from the MD Kanban TODO side panel scan. Board files and .git are always excluded."
+          "description": "MD KanbanのTODOサイドパネルのスキャンから除外するグロブパターン。ボードファイルと.gitは常に除外されます。"
         },
         "mdKanban.todoKeywords": {
           "type": "array",
@@ -207,11 +207,15 @@
           "items": {
             "type": "string"
           },
-          "description": "Comment keywords shown in the MD Kanban TODO side panel."
+          "description": "MD KanbanのTODOサイドパネルに表示するコメントキーワード。"
         },
         "mdKanban.completedColumnGlobs": {
           "type": "array",
           "default": [
+            "完了",
+            "クローズ",
+            "リリース済み",
+            "アーカイブ済み",
             "Done",
             "Closed",
             "Shipped",
@@ -220,7 +224,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Column-name glob patterns treated as completed when scanning overdue Kanban tasks."
+          "description": "期限超過のカンバンタスクをスキャンする際に、完了済みとみなす列名のグロブパターン。"
         }
       }
     },

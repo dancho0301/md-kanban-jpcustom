@@ -1,6 +1,6 @@
 (function() {
   const vscode = acquireVsCodeApi();
-  let board = JSON.parse(document.getElementById('board-data').textContent || '{"title":"Kanban Board","columns":[]}');
+  let board = JSON.parse(document.getElementById('board-data').textContent || '{"title":"カンバンボード","columns":[]}');
   const boardConfig = JSON.parse(document.getElementById('board-config')?.textContent || '{"canArchiveCards":true}');
   let dragData = null;
   let collapsedGroups = {};
@@ -22,7 +22,7 @@
   const taskTemplates = [
     {
       id: 'blank',
-      label: 'Blank',
+      label: '空白',
       title: '',
       description: '',
       tags: [],
@@ -33,60 +33,60 @@
     },
     {
       id: 'bug',
-      label: 'Bug',
-      title: 'Investigate bug',
+      label: 'バグ',
+      title: 'バグを調査する',
       description: '',
       tags: ['bug'],
       priority: 'high',
       workload: 'normal',
       assignee: '',
       subtasks: [
-        { title: 'Reproduce the issue', done: false },
-        { title: 'Identify root cause', done: false },
-        { title: 'Add regression coverage', done: false },
+        { title: '問題を再現する', done: false },
+        { title: '根本原因を特定する', done: false },
+        { title: '回帰テストを追加する', done: false },
       ],
     },
     {
       id: 'feature',
-      label: 'Feature',
-      title: 'Build feature',
+      label: '機能',
+      title: '機能を実装する',
       description: '',
       tags: ['feature'],
       priority: 'medium',
       workload: 'hard',
       assignee: '',
       subtasks: [
-        { title: 'Define acceptance criteria', done: false },
-        { title: 'Implement changes', done: false },
-        { title: 'Update docs or tests', done: false },
+        { title: '受け入れ基準を定義する', done: false },
+        { title: '変更を実装する', done: false },
+        { title: 'ドキュメントまたはテストを更新する', done: false },
       ],
     },
     {
       id: 'release',
-      label: 'Release',
-      title: 'Prepare release item',
+      label: 'リリース',
+      title: 'リリース項目を準備する',
       description: '',
       tags: ['release'],
       priority: 'high',
       workload: 'normal',
       assignee: '',
       subtasks: [
-        { title: 'Verify build', done: false },
-        { title: 'Update changelog', done: false },
-        { title: 'Confirm rollback notes', done: false },
+        { title: 'ビルドを検証する', done: false },
+        { title: '変更履歴を更新する', done: false },
+        { title: 'ロールバック手順を確認する', done: false },
       ],
     },
     {
       id: 'personal',
-      label: 'Personal',
-      title: 'Personal task',
+      label: '個人',
+      title: '個人タスク',
       description: '',
       tags: ['personal'],
       priority: 'medium',
       workload: 'easy',
       assignee: '',
       subtasks: [
-        { title: 'Define next action', done: false },
+        { title: '次のアクションを決める', done: false },
       ],
     },
   ];
@@ -109,13 +109,13 @@
     const toolbar = el('div', 'toolbar');
     const h1 = el('h1');
     h1.textContent = board.title;
-    h1.title = 'Click to rename board';
+    h1.title = 'クリックしてボード名を変更';
     h1.onclick = () => renameBoard();
     toolbar.appendChild(h1);
 
     const actions = el('div', 'toolbar-actions');
     const mdBtn = el('button', 'secondary');
-    mdBtn.textContent = '📄 View Markdown';
+    mdBtn.textContent = '📄 Markdownを表示';
     mdBtn.onclick = () => vscode.postMessage({ type: 'openMarkdown' });
     actions.appendChild(mdBtn);
     toolbar.appendChild(actions);
@@ -155,7 +155,7 @@
     // Add column placeholder
     const addColDiv = el('div', 'add-column-placeholder');
     const addColBtn = el('button');
-    addColBtn.textContent = '+ Add Column';
+    addColBtn.textContent = '+ 列を追加';
     addColBtn.onclick = (event) => addColumn(event.currentTarget);
     addColDiv.appendChild(addColBtn);
     boardEl.appendChild(addColDiv);
@@ -169,32 +169,32 @@
 
     const search = el('input', 'filter-search');
     search.type = 'search';
-    search.placeholder = 'Search cards...';
+    search.placeholder = 'カードを検索...';
     search.value = filters.text;
     search.oninput = () => updateTextFilter(search.value);
     bar.appendChild(search);
 
-    bar.appendChild(renderSelectFilter('Assignee', 'assignee', options.assignees));
-    bar.appendChild(renderSelectFilter('Tag', 'tag', options.tags));
-    bar.appendChild(renderSelectFilter('Priority', 'priority', ['critical', 'high', 'medium', 'low']));
-    bar.appendChild(renderSelectFilter('Workload', 'workload', ['easy', 'normal', 'hard', 'extreme']));
-    bar.appendChild(renderSelectFilter('Due', 'due', ['overdue', 'today', 'upcoming', 'no due date', ...options.dueDates]));
+    bar.appendChild(renderSelectFilter('担当者', 'assignee', options.assignees));
+    bar.appendChild(renderSelectFilter('タグ', 'tag', options.tags));
+    bar.appendChild(renderSelectFilter('優先度', 'priority', ['critical', 'high', 'medium', 'low']));
+    bar.appendChild(renderSelectFilter('作業量', 'workload', ['easy', 'normal', 'hard', 'extreme']));
+    bar.appendChild(renderSelectFilter('期限', 'due', ['overdue', 'today', 'upcoming', 'no due date', ...options.dueDates]));
 
     const quick = el('div', 'quick-filters');
-    quick.appendChild(renderChip('Overdue', filters.due === 'overdue', () => {
+    quick.appendChild(renderChip('期限超過', filters.due === 'overdue', () => {
       updateFilters({ due: filters.due === 'overdue' ? '' : 'overdue' });
     }));
-    quick.appendChild(renderChip('High+', filters.priority === 'high+', () => {
+    quick.appendChild(renderChip('高優先度以上', filters.priority === 'high+', () => {
       updateFilters({ priority: filters.priority === 'high+' ? '' : 'high+' });
     }));
-    quick.appendChild(renderChip('Hard+', filters.workload === 'hard+', () => {
+    quick.appendChild(renderChip('高負荷以上', filters.workload === 'hard+', () => {
       updateFilters({ workload: filters.workload === 'hard+' ? '' : 'hard+' });
     }));
     bar.appendChild(quick);
 
     if (hasActiveFilters()) {
       const clearBtn = el('button', 'secondary');
-      clearBtn.textContent = 'Clear';
+      clearBtn.textContent = 'クリア';
       clearBtn.onclick = () => updateFilters({
         text: '',
         assignee: '',
@@ -214,11 +214,11 @@
     const bar = el('div', 'stats-bar');
 
     const filtered = hasActiveFilters();
-    bar.appendChild(renderStat(filtered ? 'Cards shown' : 'Cards', filtered ? stats.visibleCards + '/' + stats.totalCards : String(stats.totalCards)));
-    bar.appendChild(renderColumnStats(filtered ? 'Cards by column shown' : 'Cards by column', stats.columnCounts));
-    bar.appendChild(renderStat('Overdue', String(stats.overdueCards), stats.overdueCards > 0 ? 'danger' : ''));
-    bar.appendChild(renderStat('Workload pts', String(stats.workloadTotal), '', 'Workload points: easy=1, normal=2, hard=3, extreme=5.'));
-    bar.appendChild(renderStat('Subtasks', stats.completedSubtasks + '/' + stats.totalSubtasks));
+    bar.appendChild(renderStat(filtered ? '表示中のカード' : 'カード', filtered ? stats.visibleCards + '/' + stats.totalCards : String(stats.totalCards)));
+    bar.appendChild(renderColumnStats(filtered ? '列ごとの表示中カード数' : '列ごとのカード数', stats.columnCounts));
+    bar.appendChild(renderStat('期限超過', String(stats.overdueCards), stats.overdueCards > 0 ? 'danger' : ''));
+    bar.appendChild(renderStat('作業量ポイント', String(stats.workloadTotal), '', '作業量ポイント: 簡単=1, 普通=2, 難しい=3, 非常に困難=5'));
+    bar.appendChild(renderStat('サブタスク', stats.completedSubtasks + '/' + stats.totalSubtasks));
 
     return bar;
   }
@@ -264,7 +264,7 @@
   function renderSelectFilter(label, key, values) {
     const select = document.createElement('select');
     select.className = 'filter-select';
-    select.title = 'Filter by ' + label.toLowerCase();
+    select.title = label + 'で絞り込み';
 
     const empty = document.createElement('option');
     empty.value = '';
@@ -457,10 +457,25 @@
     }
   }
 
+  const VALUE_LABELS = {
+    'high+': '高優先度以上',
+    'hard+': '高負荷以上',
+    'no due date': '期限日なし',
+    'overdue': '期限超過',
+    'today': '今日',
+    'upcoming': '今後',
+    critical: '緊急',
+    high: '高',
+    medium: '中',
+    low: '低',
+    easy: '簡単',
+    normal: '普通',
+    hard: '難しい',
+    extreme: '非常に困難',
+  };
+
   function formatFilterLabel(value) {
-    if (value === 'high+') return 'High+';
-    if (value === 'hard+') return 'Hard+';
-    if (value === 'no due date') return 'No due date';
+    if (Object.prototype.hasOwnProperty.call(VALUE_LABELS, value)) return VALUE_LABELS[value];
     return value.charAt(0).toUpperCase() + value.slice(1);
   }
 
@@ -474,7 +489,7 @@
 
     const columnDragHandle = el('button', 'column-drag-handle');
     columnDragHandle.textContent = '::';
-    columnDragHandle.title = 'Drag column';
+    columnDragHandle.title = '列をドラッグ';
     columnDragHandle.draggable = true;
     columnDragHandle.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -493,7 +508,7 @@
 
     const title = el('span', 'column-title');
     title.textContent = column.name;
-    title.title = 'Click to rename';
+    title.title = 'クリックして名前を変更';
     title.onclick = () => renameColumn(column.name);
     header.appendChild(title);
 
@@ -506,14 +521,14 @@
     const colActions = el('div', 'column-actions');
     const delColBtn = el('button');
     delColBtn.textContent = '✕';
-    delColBtn.title = 'Delete column';
+    delColBtn.title = '列を削除';
     delColBtn.onclick = () => {
       requestConfirmation('deleteColumn', {
-        title: 'Delete Column',
+        title: '列を削除',
         message: column.tasks.length > 0
-          ? 'Delete "' + column.name + '" and all ' + column.tasks.length + ' card(s)?'
-          : 'Delete "' + column.name + '"?',
-        confirmText: 'Delete',
+          ? '「' + column.name + '」と' + column.tasks.length + '件のカードをすべて削除しますか?'
+          : '「' + column.name + '」を削除しますか?',
+        confirmText: '削除',
         danger: true,
       }, () => {
         vscode.postMessage({ type: 'deleteColumn', name: column.name });
@@ -591,7 +606,7 @@
       const gHeader = el('div', 'group-header');
       const groupDragHandle = el('button', 'group-drag-handle');
       groupDragHandle.textContent = '::';
-      groupDragHandle.title = 'Drag group';
+      groupDragHandle.title = 'グループをドラッグ';
       groupDragHandle.draggable = true;
       groupDragHandle.addEventListener('click', (ev) => {
         ev.stopPropagation();
@@ -736,7 +751,7 @@
       // Group edit button
       const gEditBtn = el('button', 'group-edit-btn');
       gEditBtn.textContent = '✎';
-      gEditBtn.title = 'Rename group';
+      gEditBtn.title = 'グループ名を変更';
       gEditBtn.addEventListener('click', (ev) => {
         ev.stopPropagation();
         ev.preventDefault();
@@ -820,12 +835,12 @@
 
     if (hasActiveFilters() && visibleTasks.length === 0) {
       const empty = el('div', 'filter-empty');
-      empty.textContent = 'No matching cards';
+      empty.textContent = '一致するカードがありません';
       body.appendChild(empty);
     }
 
     const columnEndZone = el('div', 'column-end-drop-zone');
-    columnEndZone.title = 'Drop at end of column';
+    columnEndZone.title = '列の末尾にドロップ';
     columnEndZone.addEventListener('dragover', (e) => {
       if (dragData && dragData.type === 'column') return;
       e.preventDefault();
@@ -869,7 +884,7 @@
 
     // Add task button
     const addBtn = el('button', 'add-card-btn');
-    addBtn.textContent = '+ Add Task';
+    addBtn.textContent = '+ タスクを追加';
     addBtn.onclick = () => openTaskModal(null, column.name);
     addBtn.addEventListener('dragover', (e) => {
       if (dragData && dragData.type === 'column') return;
@@ -947,12 +962,12 @@
     const meta = el('div', 'card-meta');
     if (task.priority && task.priority !== 'medium') {
       const pb = el('span', 'priority-badge priority-' + task.priority);
-      pb.textContent = task.priority;
+      pb.textContent = formatFilterLabel(task.priority);
       meta.appendChild(pb);
     }
     if (task.workload && task.workload !== 'normal') {
       const wb = el('span', 'workload-badge workload-' + task.workload);
-      wb.textContent = task.workload;
+      wb.textContent = formatFilterLabel(task.workload);
       meta.appendChild(wb);
     }
     if (meta.childNodes.length > 0) card.appendChild(meta);
@@ -964,7 +979,7 @@
       const dueDate = new Date(task.dueDate + 'T00:00:00');
       const isOverdue = dueDate < today;
       if (isOverdue) due.classList.add('overdue');
-      due.textContent = '📅 ' + task.dueDate + (isOverdue ? ' (overdue)' : '');
+      due.textContent = '📅 ' + task.dueDate + (isOverdue ? ' (期限超過)' : '');
       card.appendChild(due);
     }
 
@@ -984,7 +999,7 @@
     if (task.source) {
       const sourceEl = el('div', 'card-source');
       sourceEl.textContent = '↗ ' + task.source;
-      sourceEl.title = 'Use the source button to open this file';
+      sourceEl.title = 'ソースボタンでこのファイルを開く';
       card.appendChild(sourceEl);
     }
 
@@ -992,7 +1007,7 @@
     if (task.subtasks && task.subtasks.length > 0) {
       const doneCount = task.subtasks.filter(s => s.done).length;
       const prog = el('div', 'subtask-progress');
-      prog.textContent = '✓ ' + doneCount + '/' + task.subtasks.length + ' subtasks';
+      prog.textContent = '✓ ' + doneCount + '/' + task.subtasks.length + ' サブタスク';
       card.appendChild(prog);
     }
 
@@ -1011,7 +1026,7 @@
     if (task.source) {
       const sourceBtn = el('button', 'card-action action-source');
       sourceBtn.textContent = '↗';
-      sourceBtn.title = 'Open source';
+      sourceBtn.title = 'ソースを開く';
       sourceBtn.onclick = (e) => {
         e.stopPropagation();
         openSource(task.source);
@@ -1021,14 +1036,14 @@
 
     const editBtn = el('button');
     editBtn.textContent = '✎';
-    editBtn.title = 'Edit task';
+    editBtn.title = 'タスクを編集';
     editBtn.onclick = (e) => { e.stopPropagation(); openTaskModal(task, columnName); };
     overlay.appendChild(editBtn);
 
     if (boardConfig.canArchiveCards !== false) {
       const archiveBtn = el('button', 'card-action action-archive');
       archiveBtn.textContent = '⇩';
-      archiveBtn.title = 'Archive task';
+      archiveBtn.title = 'タスクをアーカイブ';
       archiveBtn.onclick = (e) => {
         e.stopPropagation();
         archiveTask(task, columnName);
@@ -1038,7 +1053,7 @@
 
     const delBtn = el('button', 'card-action action-delete');
     delBtn.textContent = '🗑';
-    delBtn.title = 'Delete task';
+    delBtn.title = 'タスクを削除';
     delBtn.onclick = (e) => {
       e.stopPropagation();
       deleteTask(task);
@@ -1060,26 +1075,26 @@
 
     const closeBtn = el('button', 'modal-icon-btn');
     closeBtn.textContent = '×';
-    closeBtn.title = 'Close';
+    closeBtn.title = '閉じる';
     closeBtn.onclick = () => overlay.remove();
     header.appendChild(closeBtn);
     modal.appendChild(header);
 
-    appendDetail(modal, 'Column', columnName);
-    if (task.group) appendDetail(modal, 'Group', task.group);
+    appendDetail(modal, '列', columnName);
+    if (task.group) appendDetail(modal, 'グループ', task.group);
 
     const metaValues = [];
-    metaValues.push('Priority: ' + formatFilterLabel(task.priority || 'medium'));
-    metaValues.push('Workload: ' + formatFilterLabel(task.workload || 'normal'));
-    if (task.dueDate) metaValues.push('Due: ' + task.dueDate);
-    if (task.assignee) metaValues.push('Assignee: ' + task.assignee);
-    if (task.source) metaValues.push('Source: ' + task.source);
-    appendDetail(modal, 'Details', metaValues.join('\n'));
+    metaValues.push('優先度: ' + formatFilterLabel(task.priority || 'medium'));
+    metaValues.push('作業量: ' + formatFilterLabel(task.workload || 'normal'));
+    if (task.dueDate) metaValues.push('期限: ' + task.dueDate);
+    if (task.assignee) metaValues.push('担当者: ' + task.assignee);
+    if (task.source) metaValues.push('ソース: ' + task.source);
+    appendDetail(modal, '詳細', metaValues.join('\n'));
 
-    appendDetail(modal, 'Description', task.description || '', 'No description');
+    appendDetail(modal, '説明', task.description || '', '説明はありません');
 
     if (task.tags && task.tags.length > 0) {
-      const section = detailSection('Tags');
+      const section = detailSection('タグ');
       const tags = el('div', 'detail-tags');
       for (const tag of task.tags) {
         const tagEl = el('span', 'tag');
@@ -1091,7 +1106,7 @@
     }
 
     if (task.subtasks && task.subtasks.length > 0) {
-      const section = detailSection('Subtasks');
+      const section = detailSection('サブタスク');
       const list = el('div', 'detail-subtasks');
       for (const subtask of task.subtasks) {
         const row = el('div', 'detail-subtask' + (subtask.done ? ' done' : ''));
@@ -1109,7 +1124,7 @@
 
     const actions = el('div', 'modal-actions');
     const editBtn = el('button', 'secondary');
-    editBtn.textContent = 'Edit';
+    editBtn.textContent = '編集';
     editBtn.onclick = () => {
       overlay.remove();
       openTaskModal(task, columnName);
@@ -1118,14 +1133,14 @@
 
     if (task.source) {
       const sourceBtn = el('button', 'secondary');
-      sourceBtn.textContent = 'Open Source';
+      sourceBtn.textContent = 'ソースを開く';
       sourceBtn.onclick = () => openSource(task.source);
       actions.appendChild(sourceBtn);
     }
 
     if (boardConfig.canArchiveCards !== false) {
       const archiveBtn = el('button', 'archive-action');
-      archiveBtn.textContent = 'Archive';
+      archiveBtn.textContent = 'アーカイブ';
       archiveBtn.onclick = () => {
         archiveTask(task, columnName, () => overlay.remove());
       };
@@ -1133,7 +1148,7 @@
     }
 
     const deleteBtn = el('button', 'danger');
-    deleteBtn.textContent = 'Delete';
+    deleteBtn.textContent = '削除';
     deleteBtn.onclick = () => {
       deleteTask(task, () => overlay.remove());
     };
@@ -1148,7 +1163,7 @@
   function openTaskDetailsById(taskId) {
     const found = findTaskWithColumn(taskId);
     if (!found) {
-      showNotice('Card was not found on this board.', false);
+      showNotice('このボードにはカードが見つかりませんでした。', false);
       return;
     }
 
@@ -1173,9 +1188,9 @@
 
   function archiveTask(task, columnName, afterArchive) {
     requestConfirmation('archiveCard', {
-      title: 'Archive Card',
-      message: 'Archive "' + task.title + '" to archive.kanban.md?',
-      confirmText: 'Archive',
+      title: 'カードをアーカイブ',
+      message: '「' + task.title + '」をarchive.kanban.mdにアーカイブしますか?',
+      confirmText: 'アーカイブ',
       danger: false,
     }, () => {
       vscode.postMessage({
@@ -1191,9 +1206,9 @@
 
   function deleteTask(task, afterDelete) {
     requestConfirmation('deleteTask', {
-      title: 'Delete Card',
-      message: 'Delete "' + task.title + '"?',
-      confirmText: 'Delete',
+      title: 'カードを削除',
+      message: '「' + task.title + '」を削除しますか?',
+      confirmText: '削除',
       danger: true,
     }, () => {
       vscode.postMessage({ type: 'deleteTask', taskId: task.id });
@@ -1243,14 +1258,14 @@
     rememberInput.type = 'checkbox';
     rememberLabel.appendChild(rememberInput);
     const rememberText = el('span');
-    rememberText.textContent = 'Do not ask again for this action';
+    rememberText.textContent = 'この操作について今後確認しない';
     rememberLabel.appendChild(rememberText);
     modal.appendChild(rememberLabel);
 
     const actions = el('div', 'modal-actions');
     const cancelBtn = el('button', 'secondary');
     cancelBtn.type = 'button';
-    cancelBtn.textContent = 'Cancel';
+    cancelBtn.textContent = 'キャンセル';
     cancelBtn.onclick = () => overlay.remove();
     actions.appendChild(cancelBtn);
 
@@ -1460,12 +1475,12 @@
     const modal = el('div', 'modal');
 
     const heading = el('h2');
-    heading.textContent = existingTask ? 'Edit Task' : 'Add Task';
+    heading.textContent = existingTask ? 'タスクを編集' : 'タスクを追加';
     modal.appendChild(heading);
 
     let templateSelect = null;
     if (!existingTask) {
-      modal.appendChild(labelEl('Template'));
+      modal.appendChild(labelEl('テンプレート'));
       templateSelect = document.createElement('select');
       templateSelect.className = 'template-select';
       taskTemplates.forEach(template => {
@@ -1477,37 +1492,37 @@
       modal.appendChild(templateSelect);
     }
 
-    modal.appendChild(labelEl('Title'));
+    modal.appendChild(labelEl('タイトル'));
     const titleInput = el('input');
     titleInput.type = 'text';
     titleInput.value = existingTask ? existingTask.title : '';
-    titleInput.placeholder = 'Task title...';
+    titleInput.placeholder = 'タスクのタイトル...';
     modal.appendChild(titleInput);
 
-    modal.appendChild(labelEl('Description'));
+    modal.appendChild(labelEl('説明'));
     const descInput = el('textarea');
     descInput.value = existingTask ? existingTask.description : '';
-    descInput.placeholder = 'Optional description...';
+    descInput.placeholder = '説明(任意)...';
     modal.appendChild(descInput);
 
     // Assignee & Group row
     const row0 = el('div', 'form-row');
 
     const assCol = el('div', 'form-col');
-    assCol.appendChild(labelEl('Assignee'));
+    assCol.appendChild(labelEl('担当者'));
     const assigneeInput = el('input');
     assigneeInput.type = 'text';
     assigneeInput.value = existingTask ? (existingTask.assignee || '') : '';
-    assigneeInput.placeholder = 'Username...';
+    assigneeInput.placeholder = 'ユーザー名...';
     assCol.appendChild(assigneeInput);
     row0.appendChild(assCol);
 
     const grpCol = el('div', 'form-col');
-    grpCol.appendChild(labelEl('Group'));
+    grpCol.appendChild(labelEl('グループ'));
     const groupInput = el('input');
     groupInput.type = 'text';
     groupInput.value = existingTask ? (existingTask.group || '') : '';
-    groupInput.placeholder = 'e.g. login, auth...';
+    groupInput.placeholder = '例: ログイン, 認証...';
     grpCol.appendChild(groupInput);
     row0.appendChild(grpCol);
 
@@ -1517,9 +1532,9 @@
     const row1 = el('div', 'form-row');
 
     const priCol = el('div', 'form-col');
-    priCol.appendChild(labelEl('Priority'));
+    priCol.appendChild(labelEl('優先度'));
     const priSelect = document.createElement('select');
-    [{v:'critical',l:'🔴 Critical'},{v:'high',l:'🟠 High'},{v:'medium',l:'🔵 Medium'},{v:'low',l:'🟢 Low'}].forEach(o => {
+    [{v:'critical',l:'🔴 緊急'},{v:'high',l:'🟠 高'},{v:'medium',l:'🔵 中'},{v:'low',l:'🟢 低'}].forEach(o => {
       const opt = document.createElement('option');
       opt.value = o.v; opt.textContent = o.l;
       priSelect.appendChild(opt);
@@ -1529,9 +1544,9 @@
     row1.appendChild(priCol);
 
     const wlCol = el('div', 'form-col');
-    wlCol.appendChild(labelEl('Workload'));
+    wlCol.appendChild(labelEl('作業量'));
     const wlSelect = document.createElement('select');
-    [{v:'easy',l:'🟢 Easy'},{v:'normal',l:'🔵 Normal'},{v:'hard',l:'🟠 Hard'},{v:'extreme',l:'🔴 Extreme'}].forEach(o => {
+    [{v:'easy',l:'🟢 簡単'},{v:'normal',l:'🔵 普通'},{v:'hard',l:'🟠 難しい'},{v:'extreme',l:'🔴 非常に困難'}].forEach(o => {
       const opt = document.createElement('option');
       opt.value = o.v; opt.textContent = o.l;
       wlSelect.appendChild(opt);
@@ -1543,13 +1558,13 @@
     modal.appendChild(row1);
 
     // Due date
-    modal.appendChild(labelEl('Due Date'));
+    modal.appendChild(labelEl('期限日'));
     const dueDateInput = el('input');
     dueDateInput.type = 'date';
     dueDateInput.value = existingTask ? (existingTask.dueDate || '') : '';
     modal.appendChild(dueDateInput);
 
-    modal.appendChild(labelEl('Source'));
+    modal.appendChild(labelEl('ソース'));
     const sourceInput = el('input');
     sourceInput.type = 'text';
     sourceInput.value = existingTask ? (existingTask.source || '') : '';
@@ -1557,7 +1572,7 @@
     modal.appendChild(sourceInput);
 
     // Subtasks
-    modal.appendChild(labelEl('Subtasks'));
+    modal.appendChild(labelEl('サブタスク'));
     const subtasksList = el('div', 'subtasks-list');
     let subtasks = existingTask ? (existingTask.subtasks || []).map(s => ({...s})) : [];
 
@@ -1574,7 +1589,7 @@
         const inp = document.createElement('input');
         inp.type = 'text';
         inp.value = st.title;
-        inp.placeholder = 'Subtask...';
+        inp.placeholder = 'サブタスク...';
         inp.oninput = () => { subtasks[i].title = inp.value; };
         row.appendChild(inp);
 
@@ -1582,9 +1597,9 @@
         delBtn.textContent = '✕';
         delBtn.onclick = () => {
           requestConfirmation('deleteSubtask', {
-            title: 'Delete Subtask',
-            message: 'Delete "' + st.title + '"?',
-            confirmText: 'Delete',
+            title: 'サブタスクを削除',
+            message: '「' + st.title + '」を削除しますか?',
+            confirmText: '削除',
             danger: true,
           }, () => {
             subtasks.splice(i, 1);
@@ -1600,7 +1615,7 @@
     modal.appendChild(subtasksList);
 
     const addStBtn = el('button', 'add-subtask-btn');
-    addStBtn.textContent = '+ Add Subtask';
+    addStBtn.textContent = '+ サブタスクを追加';
     addStBtn.onclick = () => {
       subtasks.push({ title: '', done: false });
       renderSubtasks();
@@ -1609,7 +1624,7 @@
     };
     modal.appendChild(addStBtn);
 
-    modal.appendChild(labelEl('Tags (comma-separated)'));
+    modal.appendChild(labelEl('タグ(カンマ区切り)'));
     const tagsInput = el('input');
     tagsInput.type = 'text';
     tagsInput.value = existingTask ? existingTask.tags.join(', ') : '';
@@ -1638,12 +1653,12 @@
 
     const actions = el('div', 'modal-actions');
     const cancelBtn = el('button', 'secondary');
-    cancelBtn.textContent = 'Cancel';
+    cancelBtn.textContent = 'キャンセル';
     cancelBtn.onclick = () => overlay.remove();
     actions.appendChild(cancelBtn);
 
     const saveBtn = el('button');
-    saveBtn.textContent = existingTask ? 'Save' : 'Add';
+    saveBtn.textContent = existingTask ? '保存' : '追加';
     saveBtn.onclick = () => {
       const title = titleInput.value.trim();
       if (!title) { titleInput.focus(); return; }
@@ -1698,7 +1713,7 @@
   }
 
   function renameBoard() {
-    const newTitle = prompt('Board title:', board.title);
+    const newTitle = prompt('ボード名:', board.title);
     if (newTitle && newTitle.trim()) {
       vscode.postMessage({ type: 'updateTitle', title: newTitle.trim() });
       board.title = newTitle.trim();
@@ -1707,7 +1722,7 @@
   }
 
   function renameColumn(oldName) {
-    const newName = prompt('Column name:', oldName);
+    const newName = prompt('列名:', oldName);
     if (newName && newName.trim() && newName.trim() !== oldName) {
       vscode.postMessage({ type: 'renameColumn', oldName, newName: newName.trim() });
     }
@@ -1717,25 +1732,25 @@
     const overlay = el('div', 'modal-overlay');
     const modal = el('div', 'modal');
     const title = el('h2');
-    title.textContent = 'Rename Group';
+    title.textContent = 'グループ名を変更';
     modal.appendChild(title);
 
-    modal.appendChild(labelEl('Group name'));
+    modal.appendChild(labelEl('グループ名'));
     const input = el('input');
     input.type = 'text';
     input.value = oldName;
-    input.placeholder = 'Group name';
+    input.placeholder = 'グループ名';
     modal.appendChild(input);
 
     const actions = el('div', 'modal-actions');
     const cancelBtn = el('button', 'secondary');
-    cancelBtn.textContent = 'Cancel';
+    cancelBtn.textContent = 'キャンセル';
     cancelBtn.type = 'button';
     cancelBtn.onclick = () => overlay.remove();
     actions.appendChild(cancelBtn);
 
     const saveBtn = el('button');
-    saveBtn.textContent = 'Save';
+    saveBtn.textContent = '保存';
     saveBtn.type = 'button';
     saveBtn.onclick = () => {
       const newName = input.value.trim();
@@ -1773,14 +1788,14 @@
     const overlay = el('div', 'modal-overlay');
     const modal = el('div', 'modal');
     const title = el('h2');
-    title.textContent = 'Add Column';
+    title.textContent = '列を追加';
     modal.appendChild(title);
 
     const field = el('div', 'modal-field');
-    const label = labelEl('Column name:');
+    const label = labelEl('列名:');
     const input = el('input');
     input.type = 'text';
-    input.placeholder = 'Enter column name';
+    input.placeholder = '列名を入力';
     input.style.width = '100%';
     field.appendChild(label);
     field.appendChild(input);
@@ -1788,23 +1803,23 @@
 
     const actions = el('div', 'modal-actions');
     const cancelBtn = el('button', 'secondary');
-    cancelBtn.textContent = 'Cancel';
+    cancelBtn.textContent = 'キャンセル';
     cancelBtn.type = 'button';
     cancelBtn.onclick = () => overlay.remove();
     actions.appendChild(cancelBtn);
 
     const addBtn = el('button');
-    addBtn.textContent = 'Add Column';
+    addBtn.textContent = '列を追加';
     addBtn.type = 'button';
     addBtn.onclick = () => {
       const name = input.value.trim();
       if (!name) {
-        alert('Column name cannot be empty.');
+        alert('列名を空にすることはできません。');
         input.focus();
         return;
       }
       if (board.columns.some(c => c.name === name)) {
-        alert('A column with that name already exists.');
+        alert('その名前の列は既に存在します。');
         input.focus();
         return;
       }
@@ -1851,7 +1866,7 @@
     } else if (msg.type === 'openTaskDetails') {
       openTaskDetailsById(msg.taskId);
     } else if (msg.type === 'archiveResult') {
-      showNotice(msg.message || (msg.ok ? 'Archived card.' : 'Could not archive card.'), msg.ok);
+      showNotice(msg.message || (msg.ok ? 'カードをアーカイブしました。' : 'カードをアーカイブできませんでした。'), msg.ok);
     }
   });
 
