@@ -30,7 +30,7 @@ export interface KanbanBoard {
   columns: KanbanColumn[];
 }
 
-export type BoardTemplateId = 'blank' | 'basic' | 'sprint' | 'bug-tracker' | 'release-checklist' | 'personal';
+export type BoardTemplateId = 'blank' | 'basic' | 'project' | 'checklist' | 'event' | 'personal';
 
 export interface BoardTemplate {
   id: BoardTemplateId;
@@ -53,22 +53,22 @@ export const BOARD_TEMPLATES: BoardTemplate[] = [
     columns: ['未着手', '進行中', '完了'],
   },
   {
-    id: 'sprint',
-    label: 'スプリント',
-    description: 'バックログからレビューまでの反復作業用ボード',
-    columns: ['バックログ', '準備完了', '進行中', 'レビュー', '完了'],
+    id: 'project',
+    label: 'プロジェクト',
+    description: '計画から完了までを管理する汎用プロジェクトボード',
+    columns: ['バックログ', '計画中', '進行中', 'レビュー', '完了'],
   },
   {
-    id: 'bug-tracker',
-    label: 'バグトラッカー',
-    description: 'トリアージ、修正、検証、クローズまでのバグ管理',
-    columns: ['トリアージ', '確認済み', '進行中', '検証', 'クローズ'],
+    id: 'checklist',
+    label: 'チェックリスト',
+    description: '対応状況を段階的に追跡するボード',
+    columns: ['未対応', '対応中', '確認待ち', '完了'],
   },
   {
-    id: 'release-checklist',
-    label: 'リリースチェックリスト',
-    description: 'リリース準備から出荷までを追跡',
-    columns: ['計画中', '進行中', 'ブロック中', '準備完了', 'リリース済み'],
+    id: 'event',
+    label: 'イベント・企画',
+    description: 'イベントや企画の準備から実施までを追跡',
+    columns: ['アイデア', '準備中', '実施待ち', '完了'],
   },
   {
     id: 'personal',
