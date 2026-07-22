@@ -1,58 +1,51 @@
-<!-- This is a Kanban Board file created with MD Kanban extension -->
-<!-- GitHub: https://github.com/jebakumarj/md-kanban -->
-<!-- VS Code Extension: Search "MD Kanban" in the extension store (ID: jeddak.md-kanban) -->
+<!-- これはMD Kanban JP拡張機能で作成されたカンバンボードファイルです -->
+<!-- GitHub: https://github.com/dancho0301/md-kanban-jpcustom -->
+<!-- VS Code拡張機能ID: dancho0301.md-kanban-jp -->
 
-# Md Kanban Board
+# サンプルボード
 
-## To Do
+## 未着手
 
-## In Progress
+#### 週末の買い物リストを作る
+<!-- id: task-1770000000100-0 -->
+今週末に必要なものをまとめる。
+- [ ] 冷蔵庫の中身を確認
+- [ ] リストを共有
+Tags: `用事`
+<!-- workload: easy -->
 
-## Done
+#### 定例会議の準備
+<!-- id: task-1770000000100-1 -->
+アジェンダと資料を用意する。
+- [ ] アジェンダを準備する
+- [ ] 議事録を取る
+- [ ] 決定事項とToDoを共有する
+Tags: `会議`
+<!-- due: 2026-07-25 -->
 
-#### Show timeline as collapsible tree
-Updated Calendar timeline mode to show upcoming due cards in compact collapsible groups instead of card-style sections. Timeline items still open the source board and selected card details.
-Tags: `calendar` `timeline` `ux`
+### 引っ越し準備
 
-#### Add TODO scanning settings
-Make TODO keywords and include/exclude globs configurable, with support for labels like FIXME, BUG, HACK, and NOTE.
-Tags: `settings` `todo`
-
-#### Add parser and serializer tests
-Cover Markdown parsing and round-trip serialization for groups, metadata, tags, subtasks, ordering, and edge cases.
-Tags: `tests` `quality`
+#### 不用品を整理する
+<!-- id: task-1770000000100-2 -->
+Tags: `イベント`
 <!-- priority: high -->
+
+## 進行中
+
+#### 旅行の計画を立てる
+<!-- id: task-1770000000100-3 -->
+行き先と日程を決めて予約する。
+- [x] 行き先を決める
+- [ ] 宿を予約する
+- [ ] 交通手段を手配する
+Tags: `イベント` `プロジェクト`
+<!-- priority: medium -->
 <!-- workload: hard -->
+<!-- assignee: 自分 -->
 
-#### Add overdue task reminders
-Surface overdue cards in a command, tree view, or Problems-style list so time-sensitive work is easier to notice.
-Tags: `due-date` `notifications`
-<!-- priority: low -->
+## 完了
 
-#### Add board and task templates
-Provide reusable board templates such as Sprint, Bug Tracker, Release Checklist, and Personal, plus optional task templates.
-Tags: `templates` `onboarding`
-
-#### Show board statistics
-Display card counts, overdue counts, workload totals, and subtask completion progress in a compact board summary.
-Tags: `analytics` `ux`
-
-#### Convert TODO comments to Kanban tasks
-Add an action in the TODO side panel to create a card from a source TODO. Let the user choose the target board and column, and include the source file and line as a backlink.
-Tags: `todo` `workflow`
-<!-- priority: critical -->
-<!-- workload: hard -->
-
-#### Add board filters and search
-Filter visible cards by text, tag, assignee, priority, workload, due date, and overdue status.
-Tags: `ux` `search`
-<!-- priority: high -->
-
-#### Archive completed tasks
-Add a command to move old completed cards out of the active board while preserving history in Markdown.
-Tags: `cleanup` `markdown`
-
-#### Link cards to source files
-Support card metadata for source references such as `src/file.ts:42`, and open the referenced file from the card UI.
-Tags: `source` `navigation`
-<!-- priority: high -->
+#### 家計簿アプリを選ぶ
+<!-- id: task-1770000000100-4 -->
+候補を比較して1つに決めた。
+Tags: `プロジェクト`

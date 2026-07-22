@@ -1,374 +1,369 @@
-# MD Kanban
+# MD Kanban JP
 
-MD Kanban is a VS Code extension for managing tasks in a visual Kanban board while keeping the source of truth in plain Markdown.
+MD Kanban JP は、タスクを見やすいカンバンボードで管理しながら、データの本体はプレーンな Markdown に保つ VS Code 拡張機能です。
 
-Use it when you want a lightweight project board that lives with your code, works well with Git, and does not require an external service.
+コードと一緒に置ける軽量なプロジェクトボードが欲しい、Git と相性よく使いたい、外部サービスに登録せず使いたい——そんなときに向いています。
+
+> 本拡張機能は [jebakumarj/md-kanban](https://github.com/jebakumarj/md-kanban) を日本語化・汎用化したフォークです。
 
 ![VS Code](https://img.shields.io/badge/VS%20Code-v1.109%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-## Showcase
+## スクリーンショット
 
-### Board View
+### ボードビュー
 
-![MD Kanban board view](src/image/board.png)
+![MD Kanban ボードビュー](src/image/board.png)
 
-### Add Task
+### タスクの追加
 
-![Add task modal](src/image/add-task.png)
+![タスク追加モーダル](src/image/add-task.png)
 
-### TODO View
+### TODO ビュー
 
-![TODO view](src/image/todo.png)
+![TODO ビュー](src/image/todo.png)
 
-### Calendar And Overdue View
+### カレンダー・期限超過ビュー
 
-![Calendar and overdue task view](src/image/calendar-overdue-view.png)
+![カレンダーと期限超過タスクのビュー](src/image/calendar-overdue-view.png)
 
-### Timeline View
+### タイムラインビュー
 
-![Timeline view](src/image/timeline.png)
+![タイムラインビュー](src/image/timeline.png)
 
+## MD Kanban JP の特長
 
-## Why MD Kanban?
+- **ローカルファースト** — ボードはワークスペース内の `.kanban.md` / `kanban.md` ファイルに保存されます。
+- **Git フレンドリー** — タスクは読みやすい Markdown なので、変更のレビュー・差分・バージョン管理ができます。
+- **外部アカウント不要** — 別サービスにサインインせずにカンバンを使えます。
+- **見た目でも、テキストでも** — ボードUIで編集しても、Markdown を直接開いても構いません。
+- **エディタから離れない** — VS Code のアクティビティバーからボード・ソースTODO・期限超過カードを扱えます。
 
-- **Local-first** - Your board is stored in `.kanban.md` or `kanban.md` files in your workspace.
-- **Git-friendly** - Tasks are readable Markdown, so changes can be reviewed, diffed, and versioned.
-- **No external account required** - Use a Kanban board without signing in to another service.
-- **Visual when you want it, text when you need it** - Edit in the board UI or open the Markdown directly.
-- **Built for VS Code workflows** - Manage project work without leaving the editor.
-- **Project-aware** - Open boards, source TODOs, and overdue cards from the MD Kanban Activity Bar view.
+## 主な機能
 
-## Features
+- `.kanban.md` / `kanban.md` ファイル用のカンバンボードUI。
+- ボード・TODO・期限超過タスク・カレンダーのセクションを持つアクティビティバービュー。
+- 1ワークスペースに複数ボード。すべての `*.kanban.md` / `kanban.md` がサイドパネルに並びます。
+- ボードテンプレート: 空のボード / 基本 / プロジェクト / チェックリスト / イベント・企画 / 個人用。
+- カードのテキスト・担当者・タグ・優先度・作業量・期限日での絞り込みと検索。
+- 統計バー(カード数、列ごとのカード数、期限超過、作業量ポイント、サブタスク進捗)。
+- 期限超過タスクのサイドパネルビュー。
+- カレンダーのサイドパネルビュー(月グリッド、日付ドット、件数、折りたたみ可能なタイムラインツリー)。
+- カードを `archive.kanban.md` へ個別アーカイブ。
+- 列内・列間・グループへの出入り・列末尾へのドラッグ&ドロップ。
+- 落下位置を示すドロップインジケーター。
+- Markdown の `###` 見出しに対応する折りたたみ可能なタスクグループ。
+- グループ名の変更(グループ内の全カードをまとめて更新)、グループごとのドラッグ移動。
+- 列の追加・名前変更・並べ替え・削除。
+- タスク項目: 説明・タグ・優先度・作業量・期限日・担当者・サブタスク。
+- タスクテンプレート(会議・プロジェクト・用事など)でカードをすばやく作成。
+- 設定したコメントキーワード(`TODO`、`FIXME`、`BUG`、`HACK`、`NOTE` など)を集めるエクスプローラ風の TODO ツリー。
+- ソースTODOコメントを、ソースファイルと行の情報付きでカードとしてボードに追加。
+- 優先度ストリップ、作業量バッジ、期限超過ハイライト、サブタスク進捗表示。
+- VS Code テーマ連携。
+- ボード外での変更を検知するファイルウォッチ。
+- 生の Markdown を横に並べて表示。
 
-- Visual Kanban board for `.kanban.md` and `kanban.md` files.
-- MD Kanban Activity Bar view with board, TODO, overdue task, and calendar sections.
-- Multiple boards per workspace; every `*.kanban.md` file and `kanban.md` file appears in the side panel.
-- Board templates for Blank, Basic, Sprint, Bug Tracker, Release Checklist, and Personal workflows.
-- Filter and search board cards by text, assignee, tag, priority, workload, and due date.
-- Board statistics for card counts, readable per-column chips, overdue cards, workload points, and subtask completion.
-- Overdue Tasks side-panel view for cards with past due dates.
-- Calendar side-panel view with a compact month grid, date dots, task counts, and a collapsible timeline tree.
-- Archive individual cards into a workspace `archive.kanban.md` board.
-- Drag cards between columns, within columns, into groups, out of groups, and to the end of a column.
-- Card-sized drop indicators that show exactly where a card will land.
-- Collapsible task groups backed by Markdown `###` headings.
-- Rename groups with a modal; all cards in that group are updated together.
-- Move whole groups with drag-and-drop.
-- Add, rename, reorder, and delete columns.
-- Task fields for description, tags, priority, workload, due date, assignee, and subtasks.
-- Task templates for quickly starting bug, feature, release, and personal cards.
-- Source metadata links cards back to files and line numbers.
-- Explorer-style TODO tree for configured source comment keywords such as `TODO`, `FIXME`, `BUG`, `HACK`, and `NOTE`.
-- Add source TODO comments to a board as cards with source file and line details.
-- Priority strips, workload badges, overdue highlighting, and subtask progress.
-- VS Code theme integration.
-- File watching for changes made outside the visual board.
-- Side-by-side raw Markdown view.
+## インストール
 
-## Installation
+### VSIX から
 
-### From the VS Code Marketplace
+パッケージ化した `.vsix` ファイルがある場合:
 
-Install **MD Kanban** from the Visual Studio Marketplace once published, then run the commands below from the Command Palette.
+1. VS Code を開く。
+2. **拡張機能: VSIX からのインストール...** を実行。
+3. `.vsix` ファイルを選択。
 
-### From a VSIX
+### ソースから
 
-If you have a packaged `.vsix` file:
+[開発セットアップ](#開発セットアップ)を参照してください。
 
-1. Open VS Code.
-2. Run **Extensions: Install from VSIX...**.
-3. Select the `.vsix` file.
+## クイックスタート
 
-## Quick Start
+1. アクティビティバーの **MD Kanban JP** アイコンを開く。
+2. **カンバンボード** セクションで **新しいカンバンボードを作成** をクリック。
+3. ボード名を入力し、テンプレートを選択。ワークスペースに `.kanban.md` ファイルが作成されます。
+4. サイドパネルのボードをクリックして開く。
+5. タスクを追加し、カードをドラッグして動かす。
 
-1. Open the **MD Kanban** icon in the Activity Bar.
-2. Click **Create New Kanban Board** in the **Kanban Boards** section.
-3. Enter a board name and select your template. A `.kanban.md` file is created in your workspace.
-4. Click any board in the side panel to open it.
-5. Add tasks and drag cards around the board.
-
-| Command | Description |
+| コマンド | 説明 |
 | --- | --- |
-| `Kanban: Create New Kanban Board` | Create a new `.kanban.md` file from a board template |
-| `Kanban: Open Kanban Board` | Pick and open an existing `.kanban.md`, `kanban.md`, or `.kanban.md` file as a Kanban board |
-| `Kanban: Refresh Kanban Boards` | Refresh the board list in the MD Kanban side panel |
-| `Kanban: Refresh TODOs` | Refresh the source TODO list in the MD Kanban side panel |
-| `Kanban: Show Overdue Tasks` | Focus the Overdue Tasks side-panel view |
-| `Kanban: Refresh Overdue Tasks` | Refresh overdue cards in the MD Kanban side panel |
-| `Kanban: Show Timeline` | Show the collapsible timeline tree inside the Calendar side-panel view |
-| `Kanban: Refresh Timeline` | Refresh upcoming due cards used by the timeline tree |
-| `Kanban: Show Calendar` | Focus the Calendar side-panel view |
-| `Kanban: Refresh Calendar` | Refresh dated cards in the MD Kanban side panel |
+| `カンバン: 新しいカンバンボードを作成` | テンプレートから新しい `.kanban.md` を作成 |
+| `カンバン: カンバンボードを開く` | 既存のボードファイルを選んで開く |
+| `カンバン: カンバンボードを更新` | サイドパネルのボード一覧を更新 |
+| `カンバン: TODOを更新` | サイドパネルのソースTODO一覧を更新 |
+| `カンバン: 期限超過タスクを表示` | 期限超過タスクビューにフォーカス |
+| `カンバン: 期限超過タスクを更新` | 期限超過カードを更新 |
+| `カンバン: タイムラインを表示` | カレンダービュー内のタイムラインツリーを表示 |
+| `カンバン: タイムラインを更新` | タイムラインの今後の期限カードを更新 |
+| `カンバン: カレンダーを表示` | カレンダービューにフォーカス |
+| `カンバン: カレンダーを更新` | 日付付きカードを更新 |
 
-You can keep more than one board in a workspace. Files such as `frontend.kanban.md`, `backend.kanban.md`, and `release.kanban.md` are listed as separate boards.
+1ワークスペースに複数のボードを置けます。`frontend.kanban.md`、`backend.kanban.md` などは別々のボードとして一覧に表示されます。
 
-Board files also have an **Open Kanban Board** action in the Explorer and editor title context menus. TODO items have an inline add icon in the TODO side panel; that action is not shown as a Command Palette command.
+ボードファイルはエクスプローラやエディタタブの右クリックメニューにも **カンバンボードを開く** アクションがあります。TODO 項目には TODO サイドパネル内にインラインの追加アイコンがあります。
 
-## Using the Board
+## ボードの使い方
 
-### Tasks
+### タスク
 
-- Click **+ Add Task** in a column to create a card.
-- Choose a task template to prefill common fields like title, tags, priority, workload, assignee, and subtasks.
-- Click a card to open its details in the center of the board.
-- Source-linked cards show a small source button that opens the referenced file and line.
-- Use card action buttons to edit, archive, delete, or open source when available.
-- Archive actions use an orange archive button; delete actions use a red trash button.
-- In the card details view, use Edit, Open Source, Archive, or Delete; close the view with the top-right `X`.
-- Add title, description, tags, priority, workload, due date, assignee, group, and subtasks.
-- Archive and delete actions ask for confirmation, with an option to stop asking again for that action.
-- Drag cards to reorder them or move them between columns and groups.
-- Use the blue dashed drop indicator to see where the card will land.
+- 列内の **+ タスクを追加** でカードを作成します。
+- タスクテンプレートを選ぶと、タイトル・タグ・優先度・作業量・担当者・サブタスクがあらかじめ入ります。
+- カードをクリックすると編集画面が直接開きます。編集画面の左下に **削除** と **アーカイブ**(対応ボードのみ)ボタンがあります。
+- 削除・アーカイブは確認ダイアログを挟み、その操作について「今後確認しない」を選べます。
+- カードにマウスを重ねると、編集・アーカイブ・削除・ソースを開く のクイックボタンが右上に表示されます。
+- ソース情報を持つカードは、参照先のファイルと行を開くソースボタンを表示します(ソース情報は TODO からのカード化時に付与され、編集しても保持されます)。
+- カードをドラッグして並べ替えたり、列やグループの間を移動できます。
+- 青い破線のドロップインジケーターで落下位置を確認できます。
 
-### Summary And Filters
+### 統計と絞り込み
 
-- Use the summary bar to scan total cards, per-column count chips, overdue cards, workload points, and completed subtasks.
-- Workload points summarize estimated effort: easy = 1, normal = 2, hard = 3, extreme = 5.
-- Use the board filter bar to search card text and narrow cards by assignee, tag, priority, workload, or due date.
-- Use quick chips for overdue, high-priority, and hard-workload cards.
-- Card counts live in the summary bar; the filter bar stays focused on filtering controls.
-- Clear active filters to return to the full board.
+- 統計バーで、総カード数・列ごとの件数チップ・期限超過・作業量ポイント・完了サブタスクを一目で把握できます。
+- 作業量ポイントは見積もりの目安です: 簡単 = 1、普通 = 2、難しい = 3、非常に困難 = 5。
+- 絞り込みバーでカードのテキスト検索と、担当者・タグ・優先度・作業量・期限での絞り込みができます。
+- 「期限超過」「高優先度以上」「高負荷以上」のクイックチップがあります。
+- 「クリア」で絞り込みを解除して全体表示に戻ります。
 
-### Overdue Tasks
+### 期限超過タスク
 
-- The **Overdue Tasks** side-panel view groups overdue cards by due date.
-- Cards are overdue when their `due` date is before today.
-- Completed-style columns are skipped. Default completed column globs are `Done`, `Closed`, `Shipped`, and `Archived`.
-- Configure completed column name globs with `mdKanban.completedColumnGlobs`; `*` and `?` wildcards are supported.
-- Click an overdue card to open its source Kanban board and show the card details view.
-- Run **Kanban: Show Overdue Tasks** to focus the reminder list.
+- **期限超過タスク** ビューは、期限超過カードを期限日ごとにまとめて表示します。
+- カードの `due` が今日より前だと期限超過になります。
+- 完了扱いの列はスキップされます。既定の完了列パターンは `完了`、`クローズ`、`リリース済み`、`アーカイブ済み`、`Done`、`Closed`、`Shipped`、`Archived` です。
+- 完了列名のパターンは `mdKanbanJp.completedColumnGlobs` で設定できます(`*` と `?` のワイルドカード対応)。
+- 期限超過カードをクリックすると、そのカンバンボードを開いてカードの詳細を表示します。
 
-Example completed column settings: 
+設定例:
 
 ```json
 {
-  "mdKanban.completedColumnGlobs": ["Done", "Closed", "Shipped", "Archived", "QA Done", "Released *"]
+  "mdKanbanJp.completedColumnGlobs": ["完了", "クローズ", "Done", "リリース済み *"]
 }
 ```
-Note: Add a `.vscode/settings.json` file in the project:
 
-### Calendar
+プロジェクトに `.vscode/settings.json` を追加してください。
 
-- The **Calendar** side-panel view shows a compact month grid with dates.
-- Date cells show only the date, a dot, and task count; dates with overdue cards use a warning-colored dot.
-- Click a date cell to open the first card on that date in the source Kanban board and show the card details view.
-- Use previous, next, and the icon-only Today button to move through months.
-- Use the view-title switcher next to refresh to switch between Calendar and Timeline modes; the icon changes with the target mode.
-- Timeline mode shows upcoming cards in collapsible tree groups for `Today`, `This Week`, `Next Week`, and `Later`.
-- `This Week` and `Next Week` use calendar weeks that start on Monday.
-- Overdue cards stay in the **Overdue Tasks** view instead of timeline mode.
-- Completed-style columns are skipped using the same `mdKanban.completedColumnGlobs` setting as overdue and timeline scanning.
-- Run **Kanban: Show Calendar** to focus the calendar grid.
+### カレンダー
 
+- **カレンダー** ビューは日付付きの月グリッドを表示します。
+- 日付セルには日付・ドット・件数を表示し、期限超過を含む日は警告色のドットになります。
+- 日付セルをクリックすると、その日の最初のカードをカンバンボードで開いて詳細を表示します。
+- 前月・次月・今日(丸アイコン)ボタンで月を移動できます。
+- 更新の隣の切り替えボタンで、カレンダーとタイムラインを切り替えられます。
+- タイムラインは今後のカードを `今日` / `今週` / `来週` / `今後` の折りたたみグループで表示します。
+- `今週` と `来週` は月曜始まりのカレンダー週です。
+- 期限超過カードはタイムラインではなく **期限超過タスク** ビューに残ります。
+- 完了扱いの列は、期限超過・タイムラインと同じ `mdKanbanJp.completedColumnGlobs` 設定でスキップされます。
 
-### Groups
+### グループ
 
-- Tasks under a `###` heading belong to that group.
-- Click a group header to collapse or expand it.
-- Click the group edit icon to rename a group.
-- Use the group drag handle (`::`) to move a whole group.
-- Drop cards into a group to assign them.
-- Drop cards into the ungrouped area or column end to remove them from a group.
+- `###` 見出しの下のタスクはそのグループに属します。
+- グループヘッダーをクリックで折りたたみ/展開します。
+- グループの編集アイコンで名前を変更します。
+- グループのドラッグハンドル(`::`)でグループごと移動します。
+- カードをグループにドロップすると割り当てられます。
+- 未グループ領域や列末尾にドロップするとグループから外れます。
 
-### Columns
+### 列
 
-- When creating a board, choose a template: Blank, Basic, Sprint, Bug Tracker, Release Checklist, or Personal.
-- The Blank template creates an empty board with no columns; use **+ Add Column** to build it from scratch.
-- Click **+ Add Column** to create a column.
-- Click a column title to rename it.
-- Use the column drag handle (`::`) to reorder columns.
-- Use the delete icon to remove a column and its tasks.
+- ボード作成時にテンプレート(空のボード / 基本 / プロジェクト / チェックリスト / イベント・企画 / 個人用)を選びます。
+- 「空のボード」は列のない空のボードを作成します。**+ 列を追加** で自分で組み立てます。
+- **+ 列を追加** で列を作成します。
+- 列タイトルをクリックで名前を変更します。
+- 列のドラッグハンドル(`::`)で並べ替えます。
+- 削除アイコンで列とそのタスクを削除します。
 
-### Default Templates
+### 既定のテンプレート
 
-Board templates define the initial columns for a new `.kanban.md` file:
+ボードテンプレートは新しい `.kanban.md` の初期列を定義します:
 
-| Template | Default columns |
+| テンプレート | 既定の列 |
 | --- | --- |
-| Blank | No columns |
-| Basic | `To Do`, `In Progress`, `Done` |
-| Sprint | `Backlog`, `Ready`, `In Progress`, `Review`, `Done` |
-| Bug Tracker | `Triage`, `Confirmed`, `In Progress`, `Verify`, `Closed` |
-| Release Checklist | `Planned`, `In Progress`, `Blocked`, `Ready`, `Shipped` |
-| Personal | `Today`, `This Week`, `Waiting`, `Done` |
+| 空のボード | 列なし |
+| 基本 | `未着手`、`進行中`、`完了` |
+| プロジェクト | `バックログ`、`計画中`、`進行中`、`レビュー`、`完了` |
+| チェックリスト | `未対応`、`対応中`、`確認待ち`、`完了` |
+| イベント・企画 | `アイデア`、`準備中`、`実施待ち`、`完了` |
+| 個人用 | `今日`、`今週`、`保留中`、`完了` |
 
-Task templates prefill common card fields when adding a task:
+タスクテンプレートはカード追加時に共通項目をあらかじめ入力します:
 
-| Template | Title | Tags | Priority | Workload | Default subtasks |
+| テンプレート | タイトル | タグ | 優先度 | 作業量 | 既定のサブタスク |
 | --- | --- | --- | --- | --- | --- |
-| Blank | Empty | None | `medium` | `normal` | None |
-| Bug | `Investigate bug` | `bug` | `high` | `normal` | Reproduce the issue; Identify root cause; Add regression coverage |
-| Feature | `Build feature` | `feature` | `medium` | `hard` | Define acceptance criteria; Implement changes; Update docs or tests |
-| Release | `Prepare release item` | `release` | `high` | `normal` | Verify build; Update changelog; Confirm rollback notes |
-| Personal | `Personal task` | `personal` | `medium` | `easy` | Define next action |
+| 空白 | なし | なし | `medium` | `normal` | なし |
+| 会議 | `会議` | `会議` | `medium` | `easy` | アジェンダを準備する / 議事録を取る / 決定事項とToDoを共有する |
+| プロジェクト | `プロジェクト項目` | `プロジェクト` | `medium` | `hard` | ゴールを定義する / 作業を分解する / 期限と担当を決める |
+| 用事 | `用事` | `用事` | `medium` | `easy` | 必要なものを準備する / 実行する |
+| 個人 | `個人タスク` | `personal` | `medium` | `easy` | 次のアクションを決める |
 
-### Markdown View
+### Markdown ビュー
 
-- Click **View Markdown** to open the raw board file beside the visual board.
-- Manual Markdown edits are picked up by the board when the file changes.
+- **Markdownを表示** で、ボードファイルの生テキストをボードの横に開きます。
+- Markdown を手で編集すると、ファイル変更を検知してボードに反映されます。
 
-### Archive
+### アーカイブ
 
-- Use the orange archive button on a card or in the card details view to move that card into `archive.kanban.md`.
-- If `archive.kanban.md` does not exist beside the source board, MD Kanban creates it automatically.
-- If `archive.kanban.md` already exists, MD Kanban updates it in place.
-- Archived cards are appended to a column named after the source board file, such as `plan.kanban.md`.
-- Future cards archived from the same board are appended to that same source-file column.
-- The archived card is removed from the source board after it is written to the archive board.
-- Cards already inside `archive.kanban.md` cannot be archived again; open the archive board to review or delete them.
-- Archiving keeps older work in Markdown history without cluttering the active board.
+- カードやカードのクイックボタンのアーカイブから、そのカードを `archive.kanban.md` へ移動します。
+- ボードの隣に `archive.kanban.md` が無ければ自動作成します。
+- 既にあれば追記更新します。
+- アーカイブされたカードは、元ボードのファイル名(例 `plan.kanban.md`)を名前にした列に追加されます。
+- アーカイブ後、元ボードからそのカードは取り除かれます。
+- `archive.kanban.md` 内のカードは再アーカイブできません。アーカイブボードを開いて確認・削除してください。
 
-### TODOs
+### TODO
 
-- In the MD Kanban side panel, the **TODOs** section scans the workspace for configured source comment keywords.
-- TODOs are grouped by folder and file. Folders and files expand and collapse like the Explorer.
-- File rows use the active VS Code file icon theme. TODO rows use a checked icon and show the line number at the row end.
-- Click a TODO item to open the source file at the matching line.
-- Click the add icon on a TODO item to add it as a Kanban card.
-- Choose the target board and column; MD Kanban creates a card with the TODO title, `todo` tag, `source` metadata, backlink, and original TODO text.
-- TODOs are separate from `.kanban.md` boards. Edit or remove the original source comment to update them.
-- Configure scanned files and keywords with `mdKanban.todoInclude`, `mdKanban.todoExclude`, and `mdKanban.todoKeywords`.
+- サイドパネルの **TODO** セクションは、設定したコメントキーワードをワークスペースから収集します。
+- TODO はフォルダとファイルでまとめられ、エクスプローラのように展開・折りたたみできます。
+- TODO 項目をクリックすると、該当行でソースファイルを開きます。
+- 追加アイコンをクリックすると、カンバンカードとして追加できます。
+- 対象ボードと列を選ぶと、TODO のタイトル・`todo` タグ・`source` メタデータ・バックリンク・元のTODOテキストを持つカードが作られます。
+- TODO は `.kanban.md` ボードとは別です。元のソースコメントを編集・削除して更新します。
+- 対象ファイルとキーワードは `mdKanbanJp.todoInclude`、`mdKanbanJp.todoExclude`、`mdKanbanJp.todoKeywords` で設定します。
 
-Supported TODO comment styles:
+対応する TODO コメントの書き方:
 
 ```ts
-// TODO Add validation
-// FIXME Handle retry failures
-// BUG Wrong total after filter reset
-// HACK Remove temporary parser fallback
-// NOTE Document release checklist
-/* TODO Add validation */
+// TODO バリデーションを追加
+// FIXME リトライ失敗の処理
+// BUG フィルタリセット後の合計が誤り
+// HACK 一時的なパーサのフォールバックを削除
+// NOTE リリースチェックリストを記載
+/* TODO バリデーションを追加 */
 /**
- * TODO Add validation
+ * TODO バリデーションを追加
  */
 ```
 
-Use workspace settings to control scanning per project. Add a `.vscode/settings.json` file in the project:
+プロジェクトごとにスキャンを制御するには `.vscode/settings.json` を追加します:
 
 ```json
 {
-  "mdKanban.todoKeywords": ["TODO", "FIXME", "BUG"],
-  "mdKanban.todoExclude": [
+  "mdKanbanJp.todoKeywords": ["TODO", "FIXME", "BUG"],
+  "mdKanbanJp.todoExclude": [
     "**/dist/**",
     "**/node_modules/**",
     "**/generated/**"
   ],
-  "mdKanban.todoInclude": [
+  "mdKanbanJp.todoInclude": [
     "src/**/*.ts",
     "tests/**/*.ts"
   ],
-  "mdKanban.completedColumnGlobs": [
-    "Done",
-    "Closed",
-    "Released *"
+  "mdKanbanJp.completedColumnGlobs": [
+    "完了",
+    "クローズ",
+    "リリース済み *"
   ]
 }
 ```
 
-Workspace settings apply only to that project and override user-level defaults.
+ワークスペース設定はそのプロジェクトにのみ適用され、ユーザーレベルの既定を上書きします。
 
-## Markdown Format
+## Markdown フォーマット
 
-Board data is stored in plain Markdown. You can edit it manually or through the visual board.
+ボードデータはプレーンな Markdown に保存されます。手動でもボードUIでも編集できます。
 
 ```markdown
-# My Project Board
+# マイプロジェクトボード
 
-## To Do
+## 未着手
 
-#### Set up database migrations
+#### データベースマイグレーションを整備
 <!-- id: task-1770000000000-0 -->
-Create migration scripts for PostgreSQL schema changes.
-- [x] Design schema
-- [ ] Write migration files
-- [ ] Add rollback scripts
+PostgreSQL のスキーマ変更用のマイグレーションスクリプトを作成する。
+- [x] スキーマ設計
+- [ ] マイグレーションファイル作成
+- [ ] ロールバックスクリプト追加
 Tags: `backend` `database`
 <!-- priority: high -->
 <!-- workload: hard -->
 <!-- due: 2026-04-01 -->
-<!-- assignee: Alice -->
+<!-- assignee: 田中 -->
 <!-- source: src/db/migrations.ts:42 -->
 
-### Sprint 1
+### スプリント1
 
-#### Implement user auth
+#### ユーザー認証を実装
 <!-- id: task-1770000000000-1 -->
-Add OAuth2 support for Google and GitHub.
+Google と GitHub の OAuth2 対応を追加する。
 Tags: `feature` `auth`
 <!-- priority: critical -->
-<!-- assignee: Bob -->
+<!-- assignee: 鈴木 -->
 
-#### Ungrouped task after a group
+#### グループ後の未グループタスク
 <!-- id: task-1770000000000-2 -->
 <!-- group: -->
-This task is explicitly ungrouped even though it appears after a group heading.
+グループ見出しの後にあっても、明示的に未グループのタスクです。
 ```
 
-### Headings
+### 見出し
 
-| Heading | Meaning |
+| 見出し | 意味 |
 | --- | --- |
-| `#` | Board title |
-| `##` | Column |
-| `###` | Task group |
-| `####` | Task |
+| `#` | ボードタイトル |
+| `##` | 列 |
+| `###` | タスクグループ |
+| `####` | タスク |
 
-### Board Metadata
+### ボードメタデータ
 
-Board-level metadata is stored as HTML comments near the top of the file.
+ボード全体のメタデータはファイル先頭付近の HTML コメントに保存されます。
 
-| Comment | Values |
+| コメント | 値 |
 | --- | --- |
-| `<!-- empty-board: true -->` | Keeps Blank template boards empty when they have no columns |
+| `<!-- empty-board: true -->` | 列のない空のボードを空のまま保つ |
 
-### Task Metadata
+### タスクメタデータ
 
-Metadata is stored as HTML comments under a task.
+メタデータはタスクの下の HTML コメントに保存されます。
 
-| Comment | Values |
+| コメント | 値 |
 | --- | --- |
-| `<!-- id: VALUE -->` | Stable task ID generated by MD Kanban |
+| `<!-- id: VALUE -->` | MD Kanban JP が生成する安定したタスクID |
 | `<!-- priority: VALUE -->` | `critical`, `high`, `medium`, `low` |
 | `<!-- workload: VALUE -->` | `easy`, `normal`, `hard`, `extreme` |
-| `<!-- due: YYYY-MM-DD -->` | Any valid date |
-| `<!-- assignee: NAME -->` | Free text |
-| `<!-- source: PATH:LINE -->` | Source file and line, for example `src/foo.ts:42` |
-| `<!-- group: NAME -->` | Explicit group assignment |
-| `<!-- group: -->` | Explicitly mark a task as ungrouped |
+| `<!-- due: YYYY-MM-DD -->` | 有効な日付 |
+| `<!-- assignee: NAME -->` | 自由テキスト |
+| `<!-- source: PATH:LINE -->` | ソースファイルと行(例 `src/foo.ts:42`) |
+| `<!-- group: NAME -->` | 明示的なグループ割り当て |
+| `<!-- group: -->` | 明示的に未グループとする |
 
-Other supported task content:
+その他のタスク内容:
 
-- **Description**: Plain text below the task heading.
-- **Subtasks**: `- [x] Done item` / `- [ ] Pending item`.
-- **Tags**: `Tags: \`tag-name\` \`another-tag\``.
+- **説明**: タスク見出しの下のプレーンテキスト。
+- **サブタスク**: `- [x] 完了項目` / `- [ ] 未完了項目`。
+- **タグ**: `Tags: \`tag-name\` \`another-tag\``。
 
-## Privacy
+## プライバシー
 
-MD Kanban stores board data in local Markdown files in your workspace. It does not require an account or send your task data to an external service.
+MD Kanban JP はボードデータをワークスペース内のローカル Markdown ファイルに保存します。アカウントは不要で、タスクデータを外部サービスへ送信することはありません。
 
-## Contributing
+## コントリビュート
 
-Contributions are welcome. If you find a bug or have an idea, please open an issue or pull request in the repository.
+貢献を歓迎します。バグやアイデアがあれば、リポジトリで Issue または Pull Request を作成してください。
 
-### Development Setup
+### 開発セットアップ
 
 ```bash
-git clone https://github.com/jebakumarj/md-kanban.git
-cd md-kanban
+git clone https://github.com/dancho0301/md-kanban-jpcustom.git
+cd md-kanban-jpcustom
 npm install
 npm run compile
 ```
 
-Press **F5** in VS Code to launch an Extension Development Host.
+VS Code で **F5** を押すと拡張機能開発ホストが起動します。
 
-## Requirements
+テストの実行:
 
-- VS Code 1.109 or newer.
-- Node.js 16 or newer for local development.
+```bash
+npm test
+```
 
-## License
+## 動作要件
+
+- VS Code 1.109 以降。
+- ローカル開発には Node.js 16 以降。
+
+## ライセンス
 
 MIT
 
-Co-authored with Codex
+オリジナル: [jebakumarj/md-kanban](https://github.com/jebakumarj/md-kanban)(Codex との共同制作)

@@ -388,28 +388,30 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.registerWebviewViewProvider('md-kanban-jp.calendar', calendarProvider)
   );
 
+  // Board and TODO scans can be triggered by bursts of file-system events
+  // (e.g. a git checkout touching many files). Debounce so we scan once the
+  // burst settles instead of re-scanning the whole workspace per event.
+  const refreshBoards = debounce(() => {
+    boardsProvider.refresh();
+    overdueProvider.refresh();
+    calendarProvider.refresh();
+  }, 300);
+  const refreshTodos = debounce(() => todosProvider.refresh(), 400);
+  context.subscriptions.push(
+    { dispose: () => refreshBoards.dispose() },
+    { dispose: () => refreshTodos.dispose() }
+  );
+
   const boardWatcher = vscode.workspace.createFileSystemWatcher('**/*kanban.md');
-  boardWatcher.onDidCreate(() => {
-    boardsProvider.refresh();
-    overdueProvider.refresh();
-    calendarProvider.refresh();
-  });
-  boardWatcher.onDidDelete(() => {
-    boardsProvider.refresh();
-    overdueProvider.refresh();
-    calendarProvider.refresh();
-  });
-  boardWatcher.onDidChange(() => {
-    boardsProvider.refresh();
-    overdueProvider.refresh();
-    calendarProvider.refresh();
-  });
+  boardWatcher.onDidCreate(() => refreshBoards.run());
+  boardWatcher.onDidDelete(() => refreshBoards.run());
+  boardWatcher.onDidChange(() => refreshBoards.run());
   context.subscriptions.push(boardWatcher);
 
   const codeWatcher = vscode.workspace.createFileSystemWatcher('**/*');
-  codeWatcher.onDidCreate(() => todosProvider.refresh());
-  codeWatcher.onDidDelete(() => todosProvider.refresh());
-  codeWatcher.onDidChange(() => todosProvider.refresh());
+  codeWatcher.onDidCreate(() => refreshTodos.run());
+  codeWatcher.onDidDelete(() => refreshTodos.run());
+  codeWatcher.onDidChange(() => refreshTodos.run());
   context.subscriptions.push(codeWatcher);
 
   context.subscriptions.push(
@@ -819,6 +821,27 @@ function getTimelineBucket(dueDate: Date, today: Date): TimelineBucketId {
   return 'later';
 }
 
+function debounce(fn: () => void, delayMs: number): { run: () => void; dispose: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return {
+    run: () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      timer = setTimeout(() => {
+        timer = undefined;
+        fn();
+      }, delayMs);
+    },
+    dispose: () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+    },
+  };
+}
+
 function getNonce(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let nonce = '';
@@ -1045,7 +1068,7 @@ function groupTimelineTasks(tasks: TimelineTask[]): Map<TimelineBucketId, Timeli
 
 function renderCalendarHtml(visibleMonth: Date, tasks: CalendarTask[]): string {
   const monthStart = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
-  const monthLabel = monthStart.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const monthLabel = monthStart.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long' });
   const todayIso = toDateIso(getTodayStart());
   const tasksByDate = groupCalendarTasksByDate(tasks);
   const cells = getCalendarCells(monthStart).map(date => {
