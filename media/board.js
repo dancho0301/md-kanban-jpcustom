@@ -1501,6 +1501,7 @@
 
     modal.appendChild(labelEl('説明'));
     const descInput = el('textarea');
+    descInput.rows = 7;
     descInput.value = existingTask ? existingTask.description : '';
     descInput.placeholder = '説明(任意)...';
     modal.appendChild(descInput);
