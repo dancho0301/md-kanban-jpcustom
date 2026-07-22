@@ -112,6 +112,24 @@ export class KanbanPanel {
   }
 
   private async _handleMessage(message: { type: string; [key: string]: any }) {
+    // Structural fields land on single markdown lines (# / ## / ### / #### / <!-- -->);
+    // strip newlines so webview input cannot inject headings into the board file.
+    for (const key of ['title', 'name', 'oldName', 'newName', 'column', 'fromColumn', 'toColumn', 'group', 'assignee', 'source', 'dueDate']) {
+      if (typeof message[key] === 'string') {
+        message[key] = toSingleLine(message[key]);
+      }
+    }
+    if (Array.isArray(message.tags)) {
+      message.tags = message.tags
+        .filter((tag: unknown): tag is string => typeof tag === 'string')
+        .map((tag: string) => toSingleLine(tag));
+    }
+    if (Array.isArray(message.subtasks)) {
+      message.subtasks = message.subtasks
+        .filter((subtask: any) => subtask && typeof subtask.title === 'string')
+        .map((subtask: any) => ({ title: toSingleLine(subtask.title), done: !!subtask.done }));
+    }
+
     switch (message.type) {
       case 'addTask': {
         const col = this._board.columns.find(c => c.name === message.column);
@@ -439,4 +457,8 @@ export class KanbanPanel {
 
 function isArchiveBoardFile(uri: vscode.Uri): boolean {
   return uri.path.split('/').pop()?.toLowerCase() === 'archive.kanban.md';
+}
+
+function toSingleLine(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ').trim();
 }

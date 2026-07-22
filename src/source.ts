@@ -1,6 +1,8 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 
+const ALLOWED_SOURCE_SCHEMES = new Set(['file', 'vscode-remote', 'vscode-vfs', 'untitled']);
+
 export async function openTaskSource(source: unknown, boardUri: vscode.Uri): Promise<void> {
   if (typeof source !== 'string' || !source.trim()) {
     vscode.window.showInformationMessage('このカードにはソース情報がありません。');
@@ -39,7 +41,12 @@ function resolveSourceLocation(source: string, boardUri: vscode.Uri): { uri: vsc
   }
 
   if (/^[a-z][a-z0-9+.-]*:/i.test(rawPath) && !/^[a-zA-Z]:[\\/]/.test(rawPath)) {
-    return { uri: vscode.Uri.parse(rawPath), line, character };
+    const uri = vscode.Uri.parse(rawPath);
+    // Board files can come from untrusted repos; only open document-like schemes.
+    if (!ALLOWED_SOURCE_SCHEMES.has(uri.scheme.toLowerCase())) {
+      return undefined;
+    }
+    return { uri, line, character };
   }
 
   if (path.isAbsolute(rawPath)) {

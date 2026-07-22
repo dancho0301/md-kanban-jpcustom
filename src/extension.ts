@@ -819,18 +819,30 @@ function getTimelineBucket(dueDate: Date, today: Date): TimelineBucketId {
   return 'later';
 }
 
+function getNonce(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let nonce = '';
+  for (let i = 0; i < 32; i++) {
+    nonce += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return nonce;
+}
+
 function renderTimelineHtml(tasks: TimelineTask[]): string {
   const grouped = groupTimelineTasks(tasks);
   const payload = JSON.stringify({ buckets: TIMELINE_BUCKETS.map(bucket => ({
     ...bucket,
     tasks: grouped.get(bucket.id) || [],
   })) }).replace(/</g, '\\u003c');
+  const nonce = getNonce();
 
   return `<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <style>
     body {
       margin: 0;
@@ -945,7 +957,7 @@ function renderTimelineHtml(tasks: TimelineTask[]): string {
 </head>
 <body>
   <div id="timeline"></div>
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const data = ${payload};
     const timeline = document.getElementById('timeline');
@@ -1051,12 +1063,15 @@ function renderCalendarHtml(visibleMonth: Date, tasks: CalendarTask[]): string {
     };
   });
   const payload = JSON.stringify({ monthLabel, cells }).replace(/</g, '\\u003c');
+  const nonce = getNonce();
 
   return `<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <style>
     :root {
       color-scheme: light dark;
@@ -1205,7 +1220,7 @@ function renderCalendarHtml(visibleMonth: Date, tasks: CalendarTask[]): string {
   </div>
   <div class="calendar-grid" id="calendar-grid"></div>
   <div class="empty" id="empty-state" hidden>今月には期限付きのカードがありません。</div>
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const data = ${payload};
     document.getElementById('month-title').textContent = data.monthLabel;
