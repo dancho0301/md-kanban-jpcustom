@@ -953,6 +953,18 @@
       openTaskModal(task, columnName);
     });
 
+    // Keyboard access: focusable card that opens the editor with Enter/Space.
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', task.title + ' を編集');
+    card.addEventListener('keydown', (e) => {
+      if (e.target !== card) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openTaskModal(task, columnName);
+      }
+    });
+
     const titleEl = el('div', 'card-title');
     titleEl.textContent = task.title;
     card.appendChild(titleEl);
@@ -1157,6 +1169,7 @@
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
+    setTimeout(() => closeBtn.focus(), 50);
   }
 
   function openTaskDetailsById(taskId) {
@@ -1909,6 +1922,36 @@
     }
     return String(value).replace(/["\\]/g, '\\$&');
   }
+
+  // Modal keyboard handling: Escape closes the topmost modal, and Tab is
+  // trapped within it so focus cannot escape to the board behind.
+  document.addEventListener('keydown', (e) => {
+    const overlays = document.querySelectorAll('.modal-overlay');
+    if (overlays.length === 0) return;
+    const overlay = overlays[overlays.length - 1];
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      overlay.remove();
+      return;
+    }
+
+    if (e.key === 'Tab') {
+      const focusable = Array.from(
+        overlay.querySelectorAll('button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])')
+      ).filter(node => !node.disabled && node.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  });
 
   // Initial render
   render();
