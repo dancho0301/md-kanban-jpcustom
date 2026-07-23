@@ -3,6 +3,7 @@
   let board = JSON.parse(document.getElementById('board-data').textContent || '{"title":"カンバンボード","columns":[]}');
   const boardConfig = JSON.parse(document.getElementById('board-config')?.textContent || '{"canArchiveCards":true}');
   let dragData = null;
+  let pendingFocusTaskId = null;
   let collapsedGroups = {};
   let filters = {
     text: '',
@@ -953,15 +954,43 @@
       openTaskModal(task, columnName);
     });
 
-    // Keyboard access: focusable card that opens the editor with Enter/Space.
+    // Keyboard access: focusable card with editing, navigation, and movement.
     card.tabIndex = 0;
     card.setAttribute('role', 'button');
     card.setAttribute('aria-label', task.title + ' を編集');
     card.addEventListener('keydown', (e) => {
       if (e.target !== card) return;
+
+      // Enter / Space: open the editor.
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         openTaskModal(task, columnName);
+        return;
+      }
+
+      // n: add a new task to this card's column.
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        openTaskModal(null, columnName);
+        return;
+      }
+
+      if (!e.key.startsWith('Arrow')) return;
+
+      // Ctrl/Cmd + arrows: move the card between/within columns.
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        if (e.key === 'ArrowUp') moveCardVertically(task, columnName, -1);
+        else if (e.key === 'ArrowDown') moveCardVertically(task, columnName, 1);
+        else if (e.key === 'ArrowLeft') moveCardHorizontally(task, columnName, -1);
+        else if (e.key === 'ArrowRight') moveCardHorizontally(task, columnName, 1);
+        return;
+      }
+
+      // Plain arrows: move focus between cards.
+      if (!e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        focusAdjacentCard(card, e.key);
       }
     });
 
@@ -1438,6 +1467,68 @@
     document.querySelectorAll('.column-drop-indicator').forEach(el => el.remove());
   }
 
+  // --- Keyboard card movement and navigation ---
+
+  function moveCardVertically(task, columnName, delta) {
+    const column = board.columns.find(c => c.name === columnName);
+    if (!column) return;
+    const idx = column.tasks.findIndex(t => t.id === task.id);
+    if (idx === -1) return;
+    const target = idx + delta;
+    if (target < 0 || target >= column.tasks.length) return;
+
+    pendingFocusTaskId = task.id;
+    vscode.postMessage({
+      type: 'moveTaskToGroup',
+      taskId: task.id,
+      fromColumn: columnName,
+      toColumn: columnName,
+      toIndex: target,
+      group: task.group || '',
+    });
+  }
+
+  function moveCardHorizontally(task, columnName, delta) {
+    const colIdx = board.columns.findIndex(c => c.name === columnName);
+    if (colIdx === -1) return;
+    const targetCol = board.columns[colIdx + delta];
+    if (!targetCol) return;
+
+    pendingFocusTaskId = task.id;
+    vscode.postMessage({
+      type: 'moveTaskToGroup',
+      taskId: task.id,
+      fromColumn: columnName,
+      toColumn: targetCol.name,
+      toIndex: targetCol.tasks.length,
+      group: '',
+    });
+  }
+
+  function focusAdjacentCard(currentCard, key) {
+    const columnEl = currentCard.closest('.column');
+    if (!columnEl) return;
+
+    if (key === 'ArrowUp' || key === 'ArrowDown') {
+      const cards = Array.from(columnEl.querySelectorAll('.card'));
+      const idx = cards.indexOf(currentCard);
+      const target = cards[idx + (key === 'ArrowDown' ? 1 : -1)];
+      if (target) target.focus();
+      return;
+    }
+
+    // ArrowLeft / ArrowRight: jump to the nearest card in the adjacent column.
+    const columns = Array.from(document.querySelectorAll('.board .column'));
+    const colPos = columns.indexOf(columnEl);
+    const currentCards = Array.from(columnEl.querySelectorAll('.card'));
+    const rowIdx = Math.max(0, currentCards.indexOf(currentCard));
+    const targetCol = columns[colPos + (key === 'ArrowRight' ? 1 : -1)];
+    if (!targetCol) return;
+    const targetCards = Array.from(targetCol.querySelectorAll('.card'));
+    if (targetCards.length === 0) return;
+    targetCards[Math.min(rowIdx, targetCards.length - 1)].focus();
+  }
+
   function getColumnBlocks(boardEl) {
     return Array.from(boardEl.children).filter(child =>
       child.classList.contains('column') && !child.classList.contains('dragging')
@@ -1909,12 +2000,24 @@
     if (msg.type === 'boardUpdate') {
       board = msg.board;
       render();
+      restorePendingFocus();
     } else if (msg.type === 'openTaskDetails') {
       openTaskDetailsById(msg.taskId);
     } else if (msg.type === 'archiveResult') {
       showNotice(msg.message || (msg.ok ? 'カードをアーカイブしました。' : 'カードをアーカイブできませんでした。'), msg.ok);
     }
   });
+
+  function restorePendingFocus() {
+    if (!pendingFocusTaskId) return;
+    const id = pendingFocusTaskId;
+    pendingFocusTaskId = null;
+    const cardEl = document.querySelector('[data-task-id="' + cssEscape(id) + '"]');
+    if (cardEl) {
+      cardEl.focus();
+      cardEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
 
   function showNotice(message, ok) {
     const existing = document.querySelector('.board-notice');
