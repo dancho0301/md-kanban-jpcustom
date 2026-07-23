@@ -1695,6 +1695,7 @@
 
     const saveBtn = el('button');
     saveBtn.textContent = existingTask ? '保存' : '追加';
+    saveBtn.title = 'Ctrl+Enter で保存';
     saveBtn.onclick = () => {
       const title = titleInput.value.trim();
       if (!title) { titleInput.focus(); return; }
@@ -1740,6 +1741,15 @@
     };
     actions.appendChild(saveBtn);
     modal.appendChild(actions);
+
+    // Ctrl+Enter (Cmd+Enter on macOS) saves from anywhere in the form,
+    // including while typing in the multi-line description field.
+    modal.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        saveBtn.click();
+      }
+    });
 
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
     overlay.appendChild(modal);
