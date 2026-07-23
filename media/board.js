@@ -118,6 +118,11 @@
     mdBtn.textContent = '📄 Markdownを表示';
     mdBtn.onclick = () => vscode.postMessage({ type: 'openMarkdown' });
     actions.appendChild(mdBtn);
+    const helpBtn = el('button', 'secondary');
+    helpBtn.textContent = '⌨ ショートカット';
+    helpBtn.title = 'キーボードショートカット (?)';
+    helpBtn.onclick = () => openShortcutHelp();
+    actions.appendChild(helpBtn);
     toolbar.appendChild(actions);
     app.appendChild(toolbar);
     app.appendChild(renderStatsBar());
@@ -2065,6 +2070,77 @@
       }
     }
   });
+
+  // "?" opens the keyboard shortcut cheat sheet from the board (not while
+  // typing in a field or when another modal is already open).
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (isTypingTarget(document.activeElement)) return;
+    if (document.querySelector('.modal-overlay')) return;
+    e.preventDefault();
+    openShortcutHelp();
+  });
+
+  function isTypingTarget(node) {
+    if (!node) return false;
+    const tag = node.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || node.isContentEditable;
+  }
+
+  function openShortcutHelp() {
+    const overlay = el('div', 'modal-overlay');
+    const modal = el('div', 'modal shortcut-help-modal');
+
+    const header = el('div', 'modal-header');
+    const heading = el('h2');
+    heading.textContent = 'キーボードショートカット';
+    header.appendChild(heading);
+    const closeBtn = el('button', 'modal-icon-btn');
+    closeBtn.textContent = '×';
+    closeBtn.title = '閉じる';
+    closeBtn.onclick = () => overlay.remove();
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    const shortcuts = [
+      ['Enter / Space', 'カードの編集画面を開く'],
+      ['Ctrl+Enter', '編集画面で保存'],
+      ['Escape', 'モーダルを閉じる'],
+      ['↑ / ↓', '同じ列の前後のカードへフォーカス移動'],
+      ['← / →', '隣の列のカードへフォーカス移動'],
+      ['Ctrl+↑ / Ctrl+↓', 'カードを列内で並べ替え'],
+      ['Ctrl+← / Ctrl+→', 'カードを隣の列へ移動'],
+      ['n', 'その列に新しいタスクを追加'],
+      ['?', 'このショートカット一覧を表示'],
+    ];
+
+    const list = el('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:2px;margin-top:4px;';
+    for (const [keys, desc] of shortcuts) {
+      const row = el('div');
+      row.style.cssText = 'display:flex;gap:12px;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--card-border);';
+      const kbd = el('span');
+      kbd.textContent = keys;
+      kbd.style.cssText = 'font-family:var(--vscode-editor-font-family,monospace);font-size:11px;padding:2px 7px;border:1px solid var(--card-border);border-radius:4px;background:var(--input-bg);white-space:nowrap;flex-shrink:0;';
+      const d = el('span');
+      d.textContent = desc;
+      d.style.cssText = 'font-size:12px;opacity:0.85;text-align:right;';
+      row.appendChild(kbd);
+      row.appendChild(d);
+      list.appendChild(row);
+    }
+    modal.appendChild(list);
+
+    const note = el('div');
+    note.textContent = 'macOS では Ctrl の代わりに Cmd(⌘)も使えます。カードは Tab でフォーカスできます。';
+    note.style.cssText = 'margin-top:12px;font-size:11px;opacity:0.65;line-height:1.5;';
+    modal.appendChild(note);
+
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(() => closeBtn.focus(), 50);
+  }
 
   // Initial render
   render();
