@@ -175,6 +175,28 @@ export class KanbanPanel {
         break;
       }
 
+      case 'toggleSubtask': {
+        for (const col of this._board.columns) {
+          const task = col.tasks.find(t => t.id === message.taskId);
+          if (task) {
+            const index = message.index;
+            const subtask = typeof index === 'number' ? task.subtasks?.[index] : undefined;
+            if (subtask) {
+              subtask.done = !!message.done;
+              await this._save();
+              this._sendBoardUpdate();
+            }
+            break;
+          }
+        }
+        break;
+      }
+
+      case 'openExternal': {
+        await openExternalLink(message.url);
+        break;
+      }
+
       case 'deleteTask': {
         for (const col of this._board.columns) {
           const idx = col.tasks.findIndex(t => t.id === message.taskId);
@@ -461,4 +483,26 @@ function isArchiveBoardFile(uri: vscode.Uri): boolean {
 
 function toSingleLine(value: string): string {
   return value.replace(/[\r\n]+/g, ' ').trim();
+}
+
+async function openExternalLink(url: unknown): Promise<void> {
+  if (typeof url !== 'string' || !url.trim()) {
+    return;
+  }
+
+  let uri: vscode.Uri;
+  try {
+    uri = vscode.Uri.parse(url.trim(), true);
+  } catch {
+    vscode.window.showWarningMessage(`リンクを解析できませんでした: ${url}`);
+    return;
+  }
+
+  // Task text can come from shared board files, so only follow web links.
+  if (uri.scheme !== 'http' && uri.scheme !== 'https') {
+    vscode.window.showWarningMessage(`このリンクは開けません: ${url}`);
+    return;
+  }
+
+  await vscode.env.openExternal(uri);
 }

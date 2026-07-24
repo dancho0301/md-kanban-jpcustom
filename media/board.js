@@ -5,6 +5,8 @@
   let dragData = null;
   let pendingFocusTaskId = null;
   let collapsedGroups = {};
+  let expandedSubtasks = {};
+  let quickAddColumn = null;
   let filters = {
     text: '',
     assignee: '',
@@ -100,6 +102,9 @@
   if (savedState && savedState.confirmationPrefs) {
     confirmationPrefs = { ...confirmationPrefs, ...savedState.confirmationPrefs };
   }
+  if (savedState && savedState.expandedSubtasks) {
+    expandedSubtasks = savedState.expandedSubtasks;
+  }
 
   function render() {
     const app = document.getElementById('app');
@@ -166,6 +171,17 @@
     boardEl.appendChild(addColDiv);
 
     app.appendChild(boardEl);
+
+    // Keep typing in the quick-add box across re-renders (e.g. after a card
+    // is added and the board updates).
+    if (quickAddColumn) {
+      const quickInput = app.querySelector('.quick-add-input');
+      if (quickInput) {
+        quickInput.focus();
+      } else {
+        quickAddColumn = null;
+      }
+    }
   }
 
   function renderFilterBar() {
@@ -327,7 +343,7 @@
   }
 
   function persistState() {
-    vscode.setState({ collapsedGroups, filters, confirmationPrefs });
+    vscode.setState({ collapsedGroups, filters, confirmationPrefs, expandedSubtasks });
   }
 
   function getAllTasks() {
@@ -890,7 +906,7 @@
     // Add task button
     const addBtn = el('button', 'add-card-btn');
     addBtn.textContent = '+ タスクを追加';
-    addBtn.onclick = () => openTaskModal(null, column.name);
+    addBtn.onclick = () => startQuickAdd(column.name);
     addBtn.addEventListener('dragover', (e) => {
       if (dragData && dragData.type === 'column') return;
       e.preventDefault();
@@ -921,10 +937,92 @@
         group: '',
       });
     });
-    body.appendChild(addBtn);
+
+    if (quickAddColumn === column.name) {
+      body.appendChild(renderQuickAddForm(column.name));
+    } else {
+      body.appendChild(addBtn);
+    }
 
     colEl.appendChild(body);
     return colEl;
+  }
+
+  // Quick add: type a title and press Enter to keep adding cards without
+  // opening the full form. "詳細入力" escalates to the full task modal.
+  function startQuickAdd(columnName) {
+    quickAddColumn = columnName;
+    render();
+  }
+
+  function cancelQuickAdd() {
+    quickAddColumn = null;
+    render();
+  }
+
+  function renderQuickAddForm(columnName) {
+    const wrap = el('div', 'quick-add');
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:4px;';
+
+    const input = el('input', 'quick-add-input');
+    input.type = 'text';
+    input.placeholder = 'タイトルを入力して Enter';
+    input.style.cssText = 'width:100%;background:var(--input-bg);color:var(--input-fg);border:1px solid var(--accent);border-radius:3px;padding:6px 8px;font-size:13px;font-family:inherit;';
+
+    const submit = () => {
+      const title = input.value.trim();
+      if (!title) {
+        cancelQuickAdd();
+        return;
+      }
+      // Stay in quick-add mode so the next card can be typed right away.
+      vscode.postMessage({ type: 'addTask', column: columnName, title });
+      input.value = '';
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelQuickAdd();
+      }
+    });
+    wrap.appendChild(input);
+
+    const row = el('div');
+    row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
+
+    const addBtn = el('button');
+    addBtn.type = 'button';
+    addBtn.textContent = '追加';
+    addBtn.style.cssText = 'padding:3px 10px;font-size:11px;';
+    addBtn.onclick = submit;
+    row.appendChild(addBtn);
+
+    const detailBtn = el('button', 'secondary');
+    detailBtn.type = 'button';
+    detailBtn.textContent = '詳細入力';
+    detailBtn.title = '説明や期限などを入力する画面を開く';
+    detailBtn.style.cssText = 'padding:3px 10px;font-size:11px;';
+    detailBtn.onclick = () => {
+      const title = input.value.trim();
+      quickAddColumn = null;
+      render();
+      openTaskModal(null, columnName, title);
+    };
+    row.appendChild(detailBtn);
+
+    const cancelBtn = el('button', 'secondary');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'キャンセル';
+    cancelBtn.style.cssText = 'padding:3px 10px;font-size:11px;margin-left:auto;';
+    cancelBtn.onclick = () => cancelQuickAdd();
+    row.appendChild(cancelBtn);
+
+    wrap.appendChild(row);
+    return wrap;
   }
 
   function renderCard(task, columnName) {
@@ -973,10 +1071,10 @@
         return;
       }
 
-      // n: add a new task to this card's column.
+      // n: quick-add a task to this card's column.
       if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
-        openTaskModal(null, columnName);
+        startQuickAdd(columnName);
         return;
       }
 
@@ -1030,7 +1128,7 @@
 
     if (task.description) {
       const desc = el('div', 'card-desc');
-      desc.textContent = task.description;
+      appendTextWithLinks(desc, task.description);
       card.appendChild(desc);
     }
 
@@ -1048,12 +1146,53 @@
       card.appendChild(sourceEl);
     }
 
-    // Subtasks - only show progress count
+    // Subtasks: progress toggles an inline checklist that can be ticked here.
     if (task.subtasks && task.subtasks.length > 0) {
       const doneCount = task.subtasks.filter(s => s.done).length;
-      const prog = el('div', 'subtask-progress');
-      prog.textContent = '✓ ' + doneCount + '/' + task.subtasks.length + ' サブタスク';
+      const expanded = !!expandedSubtasks[task.id];
+
+      const prog = el('button', 'subtask-progress');
+      prog.type = 'button';
+      prog.textContent = (expanded ? '▾ ' : '▸ ') + '✓ ' + doneCount + '/' + task.subtasks.length + ' サブタスク';
+      prog.title = expanded ? 'サブタスクを隠す' : 'サブタスクを表示';
+      prog.style.cssText = 'display:block;background:transparent;color:var(--fg);border:none;padding:0;margin-bottom:3px;font-size:10px;opacity:0.7;cursor:pointer;font-family:inherit;text-align:left;';
+      prog.onclick = (e) => {
+        e.stopPropagation();
+        expandedSubtasks[task.id] = !expanded;
+        persistState();
+        render();
+      };
       card.appendChild(prog);
+
+      if (expanded) {
+        const list = el('div', 'card-subtasks');
+        task.subtasks.forEach((subtask, index) => {
+          const row = el('label', 'subtask-item' + (subtask.done ? ' done' : ''));
+          row.style.cssText = 'display:flex;align-items:center;gap:5px;padding:1px 0;cursor:pointer;';
+          row.addEventListener('click', (e) => e.stopPropagation());
+
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = !!subtask.done;
+          cb.style.margin = '0';
+          cb.onclick = (e) => {
+            e.stopPropagation();
+            vscode.postMessage({
+              type: 'toggleSubtask',
+              taskId: task.id,
+              index,
+              done: cb.checked,
+            });
+          };
+          row.appendChild(cb);
+
+          const label = el('span');
+          label.textContent = subtask.title;
+          row.appendChild(label);
+          list.appendChild(row);
+        });
+        card.appendChild(list);
+      }
     }
 
     if (task.tags && task.tags.length > 0) {
@@ -1136,7 +1275,7 @@
     if (task.source) metaValues.push('ソース: ' + task.source);
     appendDetail(modal, '詳細', metaValues.join('\n'));
 
-    appendDetail(modal, '説明', task.description || '', '説明はありません');
+    appendDetail(modal, '説明', task.description || '', '説明はありません', true);
 
     if (task.tags && task.tags.length > 0) {
       const section = detailSection('タグ');
@@ -1332,10 +1471,14 @@
     setTimeout(() => confirmBtn.focus(), 50);
   }
 
-  function appendDetail(modal, label, value, emptyText) {
+  function appendDetail(modal, label, value, emptyText, linkify) {
     const section = detailSection(label);
     const text = el('div', 'detail-text' + (value ? '' : ' detail-empty'));
-    text.textContent = value || emptyText || '';
+    if (value && linkify) {
+      appendTextWithLinks(text, value);
+    } else {
+      text.textContent = value || emptyText || '';
+    }
     section.appendChild(text);
     modal.appendChild(section);
   }
@@ -1578,7 +1721,7 @@
 
   // --- Modals ---
 
-  function openTaskModal(existingTask, columnName) {
+  function openTaskModal(existingTask, columnName, prefillTitle) {
     const overlay = el('div', 'modal-overlay');
     const modal = el('div', 'modal');
 
@@ -1603,7 +1746,7 @@
     modal.appendChild(labelEl('タイトル'));
     const titleInput = el('input');
     titleInput.type = 'text';
-    titleInput.value = existingTask ? existingTask.title : '';
+    titleInput.value = existingTask ? existingTask.title : (prefillTitle || '');
     titleInput.placeholder = 'タスクのタイトル...';
     modal.appendChild(titleInput);
 
@@ -1666,12 +1809,31 @@
 
     modal.appendChild(row1);
 
-    // Due date
+    // Due date, with shortcuts for the most common relative dates.
     modal.appendChild(labelEl('期限日'));
     const dueDateInput = el('input');
     dueDateInput.type = 'date';
     dueDateInput.value = existingTask ? (existingTask.dueDate || '') : '';
+    dueDateInput.style.marginBottom = '6px';
     modal.appendChild(dueDateInput);
+
+    const dueQuick = el('div');
+    dueQuick.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;';
+    [['今日', 0], ['明日', 1], ['来週', 7]].forEach(([label, offset]) => {
+      const btn = el('button', 'secondary');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.style.cssText = 'padding:3px 10px;font-size:11px;';
+      btn.onclick = () => { dueDateInput.value = isoAfterDays(offset); };
+      dueQuick.appendChild(btn);
+    });
+    const clearDue = el('button', 'secondary');
+    clearDue.type = 'button';
+    clearDue.textContent = 'クリア';
+    clearDue.style.cssText = 'padding:3px 10px;font-size:11px;margin-left:auto;';
+    clearDue.onclick = () => { dueDateInput.value = ''; };
+    dueQuick.appendChild(clearDue);
+    modal.appendChild(dueQuick);
 
     // Source is not user-editable in the form, but preserve any existing
     // value (e.g. TODO-import backlinks) so editing a task does not drop it.
@@ -1999,6 +2161,55 @@
     return l;
   }
 
+  // Render plain text but turn http(s) URLs into clickable links. Text is
+  // always inserted as text nodes, so no markup from task content is parsed.
+  function appendTextWithLinks(container, text) {
+    const value = String(text == null ? '' : text);
+    const pattern = /https?:\/\/[^\s<>"'`]+/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = pattern.exec(value)) !== null) {
+      // Trailing punctuation usually belongs to the sentence, not the URL.
+      const url = match[0].replace(/[.,;:!?)\]}"'、。，．）］｝」』]+$/, '');
+      if (!url) {
+        pattern.lastIndex = match.index + match[0].length;
+        continue;
+      }
+      if (match.index > lastIndex) {
+        container.appendChild(document.createTextNode(value.slice(lastIndex, match.index)));
+      }
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.textContent = url;
+      link.title = url + ' を開く';
+      link.style.cssText = 'color:var(--vscode-textLink-foreground,#3794ff);text-decoration:underline;cursor:pointer;word-break:break-all;';
+      link.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        vscode.postMessage({ type: 'openExternal', url });
+      };
+      container.appendChild(link);
+
+      lastIndex = match.index + url.length;
+      pattern.lastIndex = lastIndex;
+    }
+
+    if (lastIndex < value.length) {
+      container.appendChild(document.createTextNode(value.slice(lastIndex)));
+    }
+  }
+
+  function isoAfterDays(days) {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() + days);
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return date.getFullYear() + '-' + month + '-' + day;
+  }
+
   // Listen for board updates from extension
   window.addEventListener('message', (event) => {
     const msg = event.data;
@@ -2110,7 +2321,7 @@
       ['← / →', '隣の列のカードへフォーカス移動'],
       ['Ctrl+↑ / Ctrl+↓', 'カードを列内で並べ替え'],
       ['Ctrl+← / Ctrl+→', 'カードを隣の列へ移動'],
-      ['n', 'その列に新しいタスクを追加'],
+      ['n', 'その列にクイック追加(Enter で連続追加)'],
       ['?', 'このショートカット一覧を表示'],
     ];
 
