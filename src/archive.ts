@@ -10,6 +10,8 @@ export interface ArchiveTaskRequest {
 
 export interface ArchiveTaskResult {
   archiveColumnName: string;
+  archiveUri: vscode.Uri;
+  archivedTaskId: string;
 }
 
 export async function archiveTaskFromBoard(
@@ -27,10 +29,13 @@ export async function archiveTaskFromBoard(
   const archiveBoard = await readArchiveBoard(archiveUri);
   const archiveColumnName = getBoardFileName(sourceUri);
   const archiveColumn = getOrCreateArchiveColumn(archiveBoard, archiveColumnName);
-  archiveColumn.tasks.push(cloneTask(task));
+  const archivedTask = cloneTask(task);
+  // Remember where it came from so it can be restored to the same column.
+  archivedTask.archivedFrom = taskLocation.column.name;
+  archiveColumn.tasks.push(archivedTask);
 
   await vscode.workspace.fs.writeFile(archiveUri, Buffer.from(serializeToMarkdown(archiveBoard), 'utf-8'));
-  return { archiveColumnName };
+  return { archiveColumnName, archiveUri, archivedTaskId: archivedTask.id };
 }
 
 async function readArchiveBoard(archiveUri: vscode.Uri): Promise<KanbanBoard> {

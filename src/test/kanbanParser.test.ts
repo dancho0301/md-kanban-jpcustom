@@ -94,6 +94,32 @@ test('default priority/workload are omitted from serialized output', () => {
   assert.ok(!md.includes('<!-- workload:'));
 });
 
+test('repeat and archivedFrom metadata round-trip', () => {
+  const md = `# B
+
+## C
+
+#### 定例会議
+<!-- id: task-r1 -->
+<!-- repeat: weekly -->
+<!-- archivedFrom: 進行中 -->
+`;
+  const board = parseMarkdown(md);
+  const task = board.columns[0].tasks[0];
+  assert.equal(task.repeat, 'weekly');
+  assert.equal(task.archivedFrom, '進行中');
+
+  const reparsed = parseMarkdown(serializeToMarkdown(board));
+  const again = reparsed.columns[0].tasks[0];
+  assert.equal(again.repeat, 'weekly');
+  assert.equal(again.archivedFrom, '進行中');
+});
+
+test('unknown repeat values are ignored', () => {
+  const board = parseMarkdown('# B\n\n## C\n\n#### T\n<!-- id: t1 -->\n<!-- repeat: hourly -->\n');
+  assert.equal(board.columns[0].tasks[0].repeat, undefined);
+});
+
 test('createBoardFromTemplate uses the template columns', () => {
   for (const template of BOARD_TEMPLATES) {
     const md = createBoardFromTemplate('テスト', template.id);

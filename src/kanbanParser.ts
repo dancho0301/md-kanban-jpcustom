@@ -1,5 +1,8 @@
 export type Priority = 'critical' | 'high' | 'medium' | 'low';
 export type Workload = 'easy' | 'normal' | 'hard' | 'extreme';
+export type Repeat = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+export const REPEAT_VALUES: Repeat[] = ['daily', 'weekly', 'monthly', 'yearly'];
 
 export interface SubTask {
   title: string;
@@ -18,6 +21,10 @@ export interface KanbanTask {
   assignee: string;
   source: string;
   group: string;
+  /** Recurrence rule; a new occurrence is created when the card is completed. */
+  repeat?: Repeat;
+  /** Column the card lived in before it was archived, used when restoring. */
+  archivedFrom?: string;
 }
 
 export interface KanbanColumn {
@@ -182,6 +189,10 @@ export function parseMarkdown(content: string): KanbanBoard {
           currentTask.source = val;
         } else if (key === 'group') {
           currentTask.group = val;
+        } else if (key === 'repeat' && (REPEAT_VALUES as string[]).includes(val)) {
+          currentTask.repeat = val as Repeat;
+        } else if (key === 'archivedfrom' && val) {
+          currentTask.archivedFrom = val;
         }
         continue;
       }
@@ -254,6 +265,12 @@ function serializeTask(lines: string[], task: KanbanTask, needsGroupOverride = f
   }
   if (task.source) {
     lines.push(`<!-- source: ${task.source} -->`);
+  }
+  if (task.repeat) {
+    lines.push(`<!-- repeat: ${task.repeat} -->`);
+  }
+  if (task.archivedFrom) {
+    lines.push(`<!-- archivedFrom: ${task.archivedFrom} -->`);
   }
   lines.push('');
 }

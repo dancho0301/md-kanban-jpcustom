@@ -7,6 +7,7 @@
   let collapsedGroups = {};
   let expandedSubtasks = {};
   let quickAddColumn = null;
+  let canUndo = boardConfig.canUndo === true;
   let filters = {
     text: '',
     assignee: '',
@@ -20,6 +21,7 @@
     deleteTask: false,
     deleteColumn: false,
     deleteSubtask: false,
+    restoreTask: false,
   };
   let textFilterTimer = 0;
   const taskTemplates = [
@@ -119,6 +121,15 @@
     toolbar.appendChild(h1);
 
     const actions = el('div', 'toolbar-actions');
+
+    const undoBtn = el('button', 'secondary');
+    undoBtn.textContent = '↩ 元に戻す';
+    undoBtn.title = '直前の操作を元に戻す (Ctrl+Z)';
+    undoBtn.disabled = !canUndo;
+    undoBtn.style.opacity = canUndo ? '' : '0.5';
+    undoBtn.onclick = () => requestUndo();
+    actions.appendChild(undoBtn);
+
     const mdBtn = el('button', 'secondary');
     mdBtn.textContent = '📄 Markdownを表示';
     mdBtn.onclick = () => vscode.postMessage({ type: 'openMarkdown' });
@@ -540,6 +551,15 @@
     header.appendChild(count);
 
     const colActions = el('div', 'column-actions');
+
+    if (column.tasks.length > 1) {
+      const sortBtn = el('button');
+      sortBtn.textContent = '⇅';
+      sortBtn.title = 'この列を並べ替え';
+      sortBtn.onclick = () => openSortModal(column.name);
+      colActions.appendChild(sortBtn);
+    }
+
     const delColBtn = el('button');
     delColBtn.textContent = '✕';
     delColBtn.title = '列を削除';
@@ -1108,6 +1128,13 @@
       pb.textContent = formatFilterLabel(task.priority);
       meta.appendChild(pb);
     }
+    if (task.repeat) {
+      const rb = el('span', 'priority-badge');
+      rb.textContent = '🔁 ' + formatRepeatLabel(task.repeat);
+      rb.title = '完了列に移動すると次回分が作成されます';
+      rb.style.cssText = 'background:var(--badge-bg);color:var(--badge-fg);text-transform:none;';
+      meta.appendChild(rb);
+    }
     if (task.workload && task.workload !== 'normal') {
       const wb = el('span', 'workload-badge workload-' + task.workload);
       wb.textContent = formatFilterLabel(task.workload);
@@ -1233,6 +1260,17 @@
         archiveTask(task, columnName);
       };
       overlay.appendChild(archiveBtn);
+    }
+
+    if (boardConfig.isArchiveBoard === true) {
+      const restoreBtn = el('button', 'card-action action-source');
+      restoreBtn.textContent = '⇧';
+      restoreBtn.title = '元のボードに復元';
+      restoreBtn.onclick = (e) => {
+        e.stopPropagation();
+        restoreTask(task, columnName);
+      };
+      overlay.appendChild(restoreBtn);
     }
 
     const delBtn = el('button', 'card-action action-delete');
@@ -1403,6 +1441,74 @@
 
   function openSource(source) {
     vscode.postMessage({ type: 'openSource', source });
+  }
+
+  function restoreTask(task, columnName, afterRestore) {
+    requestConfirmation('restoreTask', {
+      title: 'カードを復元',
+      message: '「' + task.title + '」を' + columnName + 'に戻しますか?',
+      confirmText: '復元',
+      danger: false,
+    }, () => {
+      vscode.postMessage({ type: 'restoreTask', taskId: task.id });
+      if (afterRestore) afterRestore();
+    });
+  }
+
+  function requestUndo() {
+    vscode.postMessage({ type: 'undo' });
+  }
+
+  const REPEAT_LABELS = {
+    daily: '毎日',
+    weekly: '毎週',
+    monthly: '毎月',
+    yearly: '毎年',
+  };
+
+  function formatRepeatLabel(value) {
+    return REPEAT_LABELS[value] || value;
+  }
+
+  function openSortModal(columnName) {
+    const overlay = el('div', 'modal-overlay');
+    const modal = el('div', 'modal confirm-modal');
+
+    const title = el('h2');
+    title.textContent = '列の並べ替え';
+    modal.appendChild(title);
+
+    const message = el('div', 'confirm-message');
+    message.textContent = '「' + columnName + '」のカードを並べ替えます。グループ内での並びが対象です。';
+    modal.appendChild(message);
+
+    const options = el('div');
+    options.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-bottom:14px;';
+    [['due', '期限順(期限なしは最後)'], ['priority', '優先度順'], ['title', 'タイトル順']].forEach(([by, label]) => {
+      const btn = el('button', 'secondary');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.style.textAlign = 'left';
+      btn.onclick = () => {
+        overlay.remove();
+        vscode.postMessage({ type: 'sortColumn', name: columnName, by });
+      };
+      options.appendChild(btn);
+    });
+    modal.appendChild(options);
+
+    const actions = el('div', 'modal-actions');
+    const cancelBtn = el('button', 'secondary');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'キャンセル';
+    cancelBtn.onclick = () => overlay.remove();
+    actions.appendChild(cancelBtn);
+    modal.appendChild(actions);
+
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(() => cancelBtn.focus(), 50);
   }
 
   function requestConfirmation(kind, options, onConfirm) {
@@ -1835,6 +1941,19 @@
     dueQuick.appendChild(clearDue);
     modal.appendChild(dueQuick);
 
+    // Recurrence: a new card is created when this one reaches a completed column.
+    modal.appendChild(labelEl('繰り返し'));
+    const repeatSelect = document.createElement('select');
+    [['', 'なし'], ['daily', '毎日'], ['weekly', '毎週'], ['monthly', '毎月'], ['yearly', '毎年']].forEach(([value, label]) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      repeatSelect.appendChild(opt);
+    });
+    repeatSelect.value = existingTask ? (existingTask.repeat || '') : '';
+    repeatSelect.title = '完了扱いの列に移動すると、次回分が元の列に作成されます';
+    modal.appendChild(repeatSelect);
+
     // Source is not user-editable in the form, but preserve any existing
     // value (e.g. TODO-import backlinks) so editing a task does not drop it.
     let sourceValue = existingTask ? (existingTask.source || '') : '';
@@ -1909,6 +2028,7 @@
       priSelect.value = template.priority || 'medium';
       wlSelect.value = template.workload || 'normal';
       dueDateInput.value = '';
+      repeatSelect.value = '';
       sourceValue = '';
       subtasks = (template.subtasks || []).map(st => ({ ...st }));
       tagsInput.value = (template.tags || []).join(', ');
@@ -1939,6 +2059,16 @@
           archiveTask(existingTask, columnName, () => overlay.remove());
         };
         actions.appendChild(archiveBtn);
+      }
+
+      if (boardConfig.isArchiveBoard === true) {
+        const restoreBtn = el('button', 'secondary');
+        restoreBtn.type = 'button';
+        restoreBtn.textContent = '復元';
+        restoreBtn.onclick = () => {
+          restoreTask(existingTask, columnName, () => overlay.remove());
+        };
+        actions.appendChild(restoreBtn);
       }
     }
 
@@ -1978,6 +2108,7 @@
           assignee: assigneeInput.value.trim(),
           source: sourceValue,
           group: groupInput.value.trim(),
+          repeat: repeatSelect.value,
         });
       } else {
         vscode.postMessage({
@@ -1993,6 +2124,7 @@
           assignee: assigneeInput.value.trim(),
           source: sourceValue,
           group: groupInput.value.trim(),
+          repeat: repeatSelect.value,
         });
       }
       overlay.remove();
@@ -2215,12 +2347,15 @@
     const msg = event.data;
     if (msg.type === 'boardUpdate') {
       board = msg.board;
+      if (typeof msg.canUndo === 'boolean') canUndo = msg.canUndo;
       render();
       restorePendingFocus();
     } else if (msg.type === 'openTaskDetails') {
       openTaskDetailsById(msg.taskId);
     } else if (msg.type === 'archiveResult') {
       showNotice(msg.message || (msg.ok ? 'カードをアーカイブしました。' : 'カードをアーカイブできませんでした。'), msg.ok);
+    } else if (msg.type === 'notice') {
+      showNotice(msg.message, msg.ok !== false);
     }
   });
 
@@ -2292,6 +2427,17 @@
     openShortcutHelp();
   });
 
+  // Ctrl/Cmd+Z undoes the last board change. Text fields keep their own
+  // native undo, so only handle this on the board itself.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'z' && e.key !== 'Z') return;
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+    if (isTypingTarget(document.activeElement)) return;
+    if (document.querySelector('.modal-overlay')) return;
+    e.preventDefault();
+    requestUndo();
+  });
+
   function isTypingTarget(node) {
     if (!node) return false;
     const tag = node.tagName;
@@ -2322,6 +2468,7 @@
       ['Ctrl+↑ / Ctrl+↓', 'カードを列内で並べ替え'],
       ['Ctrl+← / Ctrl+→', 'カードを隣の列へ移動'],
       ['n', 'その列にクイック追加(Enter で連続追加)'],
+      ['Ctrl+Z', '直前の操作を元に戻す'],
       ['?', 'このショートカット一覧を表示'],
     ];
 

@@ -3,6 +3,8 @@ import { KanbanBoard } from './kanbanParser';
 
 export interface WebviewBoardConfig {
   canArchiveCards: boolean;
+  isArchiveBoard: boolean;
+  canUndo: boolean;
 }
 
 export function getWebviewContent(
