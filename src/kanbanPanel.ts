@@ -33,6 +33,8 @@ export class KanbanPanel {
   private readonly _fileUri: vscode.Uri;
   private _board: KanbanBoard;
   private _undoStack: UndoEntry[] = [];
+  private _lastSavedContent?: string;
+  private _rendered = false;
   private _disposables: vscode.Disposable[] = [];
 
   public static createOrShow(fileUri: vscode.Uri, extensionUri: vscode.Uri, taskId?: string) {
@@ -94,9 +96,10 @@ export class KanbanPanel {
   }
 
   private async _loadAndRefresh() {
+    let content: string | undefined;
     try {
       const data = await vscode.workspace.fs.readFile(this._fileUri);
-      const content = Buffer.from(data).toString('utf-8');
+      content = Buffer.from(data).toString('utf-8');
       this._board = parseMarkdown(content);
     } catch {
       this._board = {
@@ -110,6 +113,14 @@ export class KanbanPanel {
     }
 
     this._panel.title = this._board.title;
+
+    // The file watcher also fires for our own saves. Rebuilding the HTML then
+    // would reload the webview and discard transient UI state (quick-add
+    // input, keyboard focus, notices), so only rebuild for outside changes.
+    if (this._rendered && content !== undefined && content === this._lastSavedContent) {
+      return;
+    }
+
     try {
       this._panel.webview.html = getWebviewContent(
         this._panel.webview,
@@ -121,6 +132,7 @@ export class KanbanPanel {
           canUndo: this._undoStack.length > 0,
         }
       );
+      this._rendered = true;
       if (this._pendingTaskId) {
         const taskId = this._pendingTaskId;
         this._pendingTaskId = undefined;
@@ -133,6 +145,8 @@ export class KanbanPanel {
 
   private async _save() {
     const md = serializeToMarkdown(this._board);
+    // Remembered so the watcher can tell our own writes from outside edits.
+    this._lastSavedContent = md;
     await vscode.workspace.fs.writeFile(this._fileUri, Buffer.from(md, 'utf-8'));
   }
 
@@ -273,10 +287,13 @@ export class KanbanPanel {
           if (taskIdx !== -1) {
             const targetLength = toCol.tasks.length;
             const [task] = fromCol.tasks.splice(taskIdx, 1);
+            // The next occurrence stays in the original column, so it keeps
+            // the group the card had before this move.
+            const previousGroup = task.group;
             task.group = message.group ?? '';
             let insertIdx = this._getMoveInsertIndex(toCol, message, targetLength);
             toCol.tasks.splice(insertIdx, 0, task);
-            this._spawnRepeatOccurrence(task, fromCol, toCol, taskIdx);
+            this._spawnRepeatOccurrence(task, fromCol, toCol, taskIdx, previousGroup);
             await this._save();
             this._sendBoardUpdate();
           }
@@ -580,7 +597,8 @@ export class KanbanPanel {
     task: KanbanTask,
     fromColumn: KanbanColumn,
     toColumn: KanbanColumn,
-    originalIndex: number
+    originalIndex: number,
+    originalGroup: string = task.group
   ): void {
     if (!task.repeat || fromColumn === toColumn) {
       return;
@@ -597,6 +615,7 @@ export class KanbanPanel {
       dueDate: nextDueDate(task.dueDate, task.repeat),
       subtasks: task.subtasks.map(subtask => ({ ...subtask, done: false })),
       tags: [...task.tags],
+      group: originalGroup,
     };
 
     const insertAt = Math.max(0, Math.min(originalIndex, fromColumn.tasks.length));

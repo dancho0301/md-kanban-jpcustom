@@ -107,6 +107,12 @@
   if (savedState && savedState.expandedSubtasks) {
     expandedSubtasks = savedState.expandedSubtasks;
   }
+  if (savedState && savedState.quickAddColumn) {
+    quickAddColumn = savedState.quickAddColumn;
+  }
+  if (savedState && savedState.pendingFocusTaskId) {
+    pendingFocusTaskId = savedState.pendingFocusTaskId;
+  }
 
   function render() {
     const app = document.getElementById('app');
@@ -183,14 +189,24 @@
 
     app.appendChild(boardEl);
 
-    // Keep typing in the quick-add box across re-renders (e.g. after a card
-    // is added and the board updates).
-    if (quickAddColumn) {
+    // Restore where the user was: the card they just moved with the keyboard,
+    // otherwise the quick-add box so they can keep typing.
+    if (pendingFocusTaskId) {
+      const id = pendingFocusTaskId;
+      pendingFocusTaskId = null;
+      persistState();
+      const cardEl = app.querySelector('[data-task-id="' + cssEscape(id) + '"]');
+      if (cardEl) {
+        cardEl.focus();
+        cardEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    } else if (quickAddColumn) {
       const quickInput = app.querySelector('.quick-add-input');
       if (quickInput) {
         quickInput.focus();
       } else {
         quickAddColumn = null;
+        persistState();
       }
     }
   }
@@ -354,7 +370,16 @@
   }
 
   function persistState() {
-    vscode.setState({ collapsedGroups, filters, confirmationPrefs, expandedSubtasks });
+    vscode.setState({
+      collapsedGroups,
+      filters,
+      confirmationPrefs,
+      expandedSubtasks,
+      // Kept so an external file change (which reloads this webview) does not
+      // interrupt continuous quick-add or lose keyboard focus mid-move.
+      quickAddColumn,
+      pendingFocusTaskId,
+    });
   }
 
   function getAllTasks() {
@@ -972,11 +997,13 @@
   // opening the full form. "詳細入力" escalates to the full task modal.
   function startQuickAdd(columnName) {
     quickAddColumn = columnName;
+    persistState();
     render();
   }
 
   function cancelQuickAdd() {
     quickAddColumn = null;
+    persistState();
     render();
   }
 
@@ -1029,6 +1056,7 @@
     detailBtn.onclick = () => {
       const title = input.value.trim();
       quickAddColumn = null;
+      persistState();
       render();
       openTaskModal(null, columnName, title);
     };
@@ -1732,6 +1760,7 @@
     if (target < 0 || target >= column.tasks.length) return;
 
     pendingFocusTaskId = task.id;
+    persistState();
     vscode.postMessage({
       type: 'moveTaskToGroup',
       taskId: task.id,
@@ -1749,6 +1778,7 @@
     if (!targetCol) return;
 
     pendingFocusTaskId = task.id;
+    persistState();
     vscode.postMessage({
       type: 'moveTaskToGroup',
       taskId: task.id,
@@ -1759,14 +1789,21 @@
     });
   }
 
+  // Cards inside a collapsed group are hidden and cannot take focus, so
+  // keyboard navigation skips them.
+  function visibleCardsIn(columnEl) {
+    return Array.from(columnEl.querySelectorAll('.card')).filter(card => card.offsetParent !== null);
+  }
+
   function focusAdjacentCard(currentCard, key) {
     const columnEl = currentCard.closest('.column');
     if (!columnEl) return;
 
+    const currentCards = visibleCardsIn(columnEl);
+    const rowIdx = Math.max(0, currentCards.indexOf(currentCard));
+
     if (key === 'ArrowUp' || key === 'ArrowDown') {
-      const cards = Array.from(columnEl.querySelectorAll('.card'));
-      const idx = cards.indexOf(currentCard);
-      const target = cards[idx + (key === 'ArrowDown' ? 1 : -1)];
+      const target = currentCards[rowIdx + (key === 'ArrowDown' ? 1 : -1)];
       if (target) target.focus();
       return;
     }
@@ -1774,11 +1811,9 @@
     // ArrowLeft / ArrowRight: jump to the nearest card in the adjacent column.
     const columns = Array.from(document.querySelectorAll('.board .column'));
     const colPos = columns.indexOf(columnEl);
-    const currentCards = Array.from(columnEl.querySelectorAll('.card'));
-    const rowIdx = Math.max(0, currentCards.indexOf(currentCard));
     const targetCol = columns[colPos + (key === 'ArrowRight' ? 1 : -1)];
     if (!targetCol) return;
-    const targetCards = Array.from(targetCol.querySelectorAll('.card'));
+    const targetCards = visibleCardsIn(targetCol);
     if (targetCards.length === 0) return;
     targetCards[Math.min(rowIdx, targetCards.length - 1)].focus();
   }
@@ -2371,7 +2406,6 @@
       board = msg.board;
       if (typeof msg.canUndo === 'boolean') canUndo = msg.canUndo;
       render();
-      restorePendingFocus();
     } else if (msg.type === 'openTaskDetails') {
       openTaskDetailsById(msg.taskId);
     } else if (msg.type === 'archiveResult') {
@@ -2380,17 +2414,6 @@
       showNotice(msg.message, msg.ok !== false);
     }
   });
-
-  function restorePendingFocus() {
-    if (!pendingFocusTaskId) return;
-    const id = pendingFocusTaskId;
-    pendingFocusTaskId = null;
-    const cardEl = document.querySelector('[data-task-id="' + cssEscape(id) + '"]');
-    if (cardEl) {
-      cardEl.focus();
-      cardEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    }
-  }
 
   function showNotice(message, ok) {
     const existing = document.querySelector('.board-notice');
