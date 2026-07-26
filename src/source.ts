@@ -27,6 +27,81 @@ export async function openTaskSource(source: unknown, boardUri: vscode.Uri): Pro
   }
 }
 
+/**
+ * Open a file referenced by a Markdown link in a task description.
+ * Unlike source metadata the line number is optional, and relative paths are
+ * resolved against the board file first (how Markdown links normally work),
+ * then against the workspace root.
+ */
+export async function openLinkedFile(target: unknown, boardUri: vscode.Uri): Promise<void> {
+  if (typeof target !== 'string' || !target.trim()) {
+    return;
+  }
+
+  const raw = target.trim();
+  const lineMatch = raw.match(/^(.*?):(\d+)$/);
+  const rawPath = lineMatch ? lineMatch[1] : raw;
+  const line = lineMatch ? Number(lineMatch[2]) : 1;
+
+  const uri = await resolveLinkedFileUri(rawPath, boardUri);
+  if (!uri) {
+    vscode.window.showWarningMessage(`リンク先のファイルが見つかりませんでした: ${raw}`);
+    return;
+  }
+
+  try {
+    const doc = await vscode.workspace.openTextDocument(uri);
+    const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+    const position = new vscode.Position(Math.max(0, line - 1), 0);
+    editor.selection = new vscode.Selection(position, position);
+    editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(`リンク先を開けませんでした: ${message}`);
+  }
+}
+
+async function resolveLinkedFileUri(rawPath: string, boardUri: vscode.Uri): Promise<vscode.Uri | undefined> {
+  if (!rawPath) {
+    return undefined;
+  }
+
+  // Explicit URIs: only allow the document-like schemes we trust.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(rawPath) && !/^[a-zA-Z]:[\\/]/.test(rawPath)) {
+    const uri = vscode.Uri.parse(rawPath);
+    return ALLOWED_SOURCE_SCHEMES.has(uri.scheme.toLowerCase()) ? uri : undefined;
+  }
+
+  if (path.isAbsolute(rawPath)) {
+    return vscode.Uri.file(rawPath);
+  }
+
+  const segments = rawPath.split(/[\\/]/).filter(segment => segment && segment !== '.');
+  if (segments.length === 0) {
+    return undefined;
+  }
+
+  const candidates: vscode.Uri[] = [];
+  const boardDir = boardUri.with({ path: boardUri.path.replace(/\/[^/]*$/, '') });
+  candidates.push(vscode.Uri.joinPath(boardDir, ...segments));
+
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(boardUri) ?? vscode.workspace.workspaceFolders?.[0];
+  if (workspaceFolder) {
+    candidates.push(vscode.Uri.joinPath(workspaceFolder.uri, ...segments));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      await vscode.workspace.fs.stat(candidate);
+      return candidate;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  return undefined;
+}
+
 function resolveSourceLocation(source: string, boardUri: vscode.Uri): { uri: vscode.Uri; line: number; character: number } | undefined {
   const match = source.match(/^(.*):(\d+)(?::(\d+))?$/);
   if (!match) {

@@ -10,7 +10,7 @@ import {
   REPEAT_VALUES,
   generateId,
 } from './kanbanParser';
-import { openTaskSource } from './source';
+import { openLinkedFile, openTaskSource } from './source';
 import { getWebviewContent } from './webviewContent';
 
 /**
@@ -404,6 +404,11 @@ export class KanbanPanel {
 
       case 'openSource': {
         await openTaskSource(message.source, this._fileUri);
+        break;
+      }
+
+      case 'openFile': {
+        await openLinkedFile(message.path, this._fileUri);
         break;
       }
 

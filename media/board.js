@@ -1860,7 +1860,7 @@
     const descInput = el('textarea');
     descInput.rows = 7;
     descInput.value = existingTask ? existingTask.description : '';
-    descInput.placeholder = '説明(任意)...';
+    descInput.placeholder = '説明(任意)...\n[設計メモ](docs/design.md) のように書くとリンクになります';
     modal.appendChild(descInput);
 
     // Assignee & Group row
@@ -2293,44 +2293,66 @@
     return l;
   }
 
-  // Render plain text but turn http(s) URLs into clickable links. Text is
-  // always inserted as text nodes, so no markup from task content is parsed.
+  // Render plain text, turning Markdown links [label](target) and bare http(s)
+  // URLs into clickable links. Text is always inserted as text nodes, so no
+  // markup from task content is ever parsed as HTML.
   function appendTextWithLinks(container, text) {
     const value = String(text == null ? '' : text);
-    const pattern = /https?:\/\/[^\s<>"'`]+/g;
+    const pattern = /\[([^\]\n]*)\]\(([^)\s]+)\)|(https?:\/\/[^\s<>"'`]+)/g;
     let lastIndex = 0;
     let match;
 
     while ((match = pattern.exec(value)) !== null) {
-      // Trailing punctuation usually belongs to the sentence, not the URL.
-      const url = match[0].replace(/[.,;:!?)\]}"'、。，．）］｝」』]+$/, '');
-      if (!url) {
-        pattern.lastIndex = match.index + match[0].length;
-        continue;
+      let label;
+      let target;
+      let consumed;
+
+      if (match[3]) {
+        // Bare URL: trailing punctuation usually belongs to the sentence.
+        target = match[3].replace(/[.,;:!?)\]}"'、。，．）］｝」』]+$/, '');
+        if (!target) {
+          pattern.lastIndex = match.index + match[0].length;
+          continue;
+        }
+        label = target;
+        consumed = target.length;
+      } else {
+        target = match[2];
+        label = match[1] || match[2];
+        consumed = match[0].length;
       }
+
       if (match.index > lastIndex) {
         container.appendChild(document.createTextNode(value.slice(lastIndex, match.index)));
       }
+      container.appendChild(createLink(label, target));
 
-      const link = document.createElement('a');
-      link.href = url;
-      link.textContent = url;
-      link.title = url + ' を開く';
-      link.style.cssText = 'color:var(--vscode-textLink-foreground,#3794ff);text-decoration:underline;cursor:pointer;word-break:break-all;';
-      link.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        vscode.postMessage({ type: 'openExternal', url });
-      };
-      container.appendChild(link);
-
-      lastIndex = match.index + url.length;
+      lastIndex = match.index + consumed;
       pattern.lastIndex = lastIndex;
     }
 
     if (lastIndex < value.length) {
       container.appendChild(document.createTextNode(value.slice(lastIndex)));
     }
+  }
+
+  function createLink(label, target) {
+    const isWebLink = /^https?:\/\//i.test(target);
+    const link = document.createElement('a');
+    link.href = target;
+    link.textContent = label;
+    link.title = isWebLink ? target + ' を開く' : target + ' をエディタで開く';
+    link.style.cssText = 'color:var(--vscode-textLink-foreground,#3794ff);text-decoration:underline;cursor:pointer;word-break:break-all;';
+    link.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isWebLink) {
+        vscode.postMessage({ type: 'openExternal', url: target });
+      } else {
+        vscode.postMessage({ type: 'openFile', path: target });
+      }
+    };
+    return link;
   }
 
   function isoAfterDays(days) {
