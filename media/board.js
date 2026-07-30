@@ -2489,6 +2489,81 @@
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || node.isContentEditable;
   }
 
+  // --- Right-button drag panning ---
+
+  // Panning applies to whichever element actually scrolls in each axis; which
+  // one that is depends on how the webview lays out the document.
+  function panBy(dx, dy) {
+    const seen = new Set();
+    for (const candidate of [document.scrollingElement, document.body, document.documentElement]) {
+      if (!candidate || seen.has(candidate)) continue;
+      seen.add(candidate);
+      if (dx && candidate.scrollWidth > candidate.clientWidth) {
+        candidate.scrollLeft += dx;
+        dx = 0;
+      }
+      if (dy && candidate.scrollHeight > candidate.clientHeight) {
+        candidate.scrollTop += dy;
+        dy = 0;
+      }
+    }
+  }
+
+  function isPannableTarget(target) {
+    if (!(target instanceof Element)) return true;
+    // Text fields and modals keep their normal right-click behaviour.
+    return !isTypingTarget(target) && !target.closest('.modal-overlay');
+  }
+
+  (function setupPanning() {
+    let panning = false;
+    let lastX = 0;
+    let lastY = 0;
+    let previousCursor = '';
+    let previousUserSelect = '';
+
+    document.addEventListener('mousedown', (e) => {
+      if (e.button !== 2 || !isPannableTarget(e.target)) return;
+      panning = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      previousCursor = document.body.style.cursor;
+      previousUserSelect = document.body.style.userSelect;
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!panning) return;
+      panBy(lastX - e.clientX, lastY - e.clientY);
+      lastX = e.clientX;
+      lastY = e.clientY;
+      e.preventDefault();
+    });
+
+    function stopPanning() {
+      if (!panning) return;
+      panning = false;
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    }
+
+    document.addEventListener('mouseup', (e) => {
+      if (e.button === 2) stopPanning();
+    });
+    document.addEventListener('mouseleave', stopPanning);
+    window.addEventListener('blur', stopPanning);
+
+    // The right button is the pan gesture on the board, so suppress the
+    // default menu there. Platforms differ on whether contextmenu fires on
+    // press or release, so decide from the event target instead of pan state.
+    document.addEventListener('contextmenu', (e) => {
+      if (isPannableTarget(e.target)) {
+        e.preventDefault();
+      }
+    });
+  })();
+
   function openShortcutHelp() {
     const overlay = el('div', 'modal-overlay');
     const modal = el('div', 'modal shortcut-help-modal');
@@ -2535,7 +2610,8 @@
     modal.appendChild(list);
 
     const note = el('div');
-    note.textContent = 'macOS では Ctrl の代わりに Cmd(⌘)も使えます。カードは Tab でフォーカスできます。';
+    note.textContent = 'macOS では Ctrl の代わりに Cmd(⌘)も使えます。カードは Tab でフォーカスできます。'
+      + ' ボード上を右ドラッグすると画面をパン(スクロール)できます。';
     note.style.cssText = 'margin-top:12px;font-size:11px;opacity:0.65;line-height:1.5;';
     modal.appendChild(note);
 
