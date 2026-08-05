@@ -3,7 +3,11 @@
   let board = JSON.parse(document.getElementById('board-data').textContent || '{"title":"カンバンボード","columns":[]}');
   const boardConfig = JSON.parse(document.getElementById('board-config')?.textContent || '{"canArchiveCards":true}');
   let dragData = null;
+  let pendingFocusTaskId = null;
   let collapsedGroups = {};
+  let expandedSubtasks = {};
+  let quickAddColumn = null;
+  let canUndo = boardConfig.canUndo === true;
   let filters = {
     text: '',
     assignee: '',
@@ -17,6 +21,7 @@
     deleteTask: false,
     deleteColumn: false,
     deleteSubtask: false,
+    restoreTask: false,
   };
   let textFilterTimer = 0;
   const taskTemplates = [
@@ -99,6 +104,15 @@
   if (savedState && savedState.confirmationPrefs) {
     confirmationPrefs = { ...confirmationPrefs, ...savedState.confirmationPrefs };
   }
+  if (savedState && savedState.expandedSubtasks) {
+    expandedSubtasks = savedState.expandedSubtasks;
+  }
+  if (savedState && savedState.quickAddColumn) {
+    quickAddColumn = savedState.quickAddColumn;
+  }
+  if (savedState && savedState.pendingFocusTaskId) {
+    pendingFocusTaskId = savedState.pendingFocusTaskId;
+  }
 
   function render() {
     const app = document.getElementById('app');
@@ -113,10 +127,24 @@
     toolbar.appendChild(h1);
 
     const actions = el('div', 'toolbar-actions');
+
+    const undoBtn = el('button', 'secondary');
+    undoBtn.textContent = '↩ 元に戻す';
+    undoBtn.title = '直前の操作を元に戻す (Ctrl+Z)';
+    undoBtn.disabled = !canUndo;
+    undoBtn.style.opacity = canUndo ? '' : '0.5';
+    undoBtn.onclick = () => requestUndo();
+    actions.appendChild(undoBtn);
+
     const mdBtn = el('button', 'secondary');
     mdBtn.textContent = '📄 Markdownを表示';
     mdBtn.onclick = () => vscode.postMessage({ type: 'openMarkdown' });
     actions.appendChild(mdBtn);
+    const helpBtn = el('button', 'secondary');
+    helpBtn.textContent = '⌨ ショートカット';
+    helpBtn.title = 'キーボードショートカット (?)';
+    helpBtn.onclick = () => openShortcutHelp();
+    actions.appendChild(helpBtn);
     toolbar.appendChild(actions);
     app.appendChild(toolbar);
     app.appendChild(renderStatsBar());
@@ -160,6 +188,27 @@
     boardEl.appendChild(addColDiv);
 
     app.appendChild(boardEl);
+
+    // Restore where the user was: the card they just moved with the keyboard,
+    // otherwise the quick-add box so they can keep typing.
+    if (pendingFocusTaskId) {
+      const id = pendingFocusTaskId;
+      pendingFocusTaskId = null;
+      persistState();
+      const cardEl = app.querySelector('[data-task-id="' + cssEscape(id) + '"]');
+      if (cardEl) {
+        cardEl.focus();
+        cardEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    } else if (quickAddColumn) {
+      const quickInput = app.querySelector('.quick-add-input');
+      if (quickInput) {
+        quickInput.focus();
+      } else {
+        quickAddColumn = null;
+        persistState();
+      }
+    }
   }
 
   function renderFilterBar() {
@@ -321,7 +370,16 @@
   }
 
   function persistState() {
-    vscode.setState({ collapsedGroups, filters, confirmationPrefs });
+    vscode.setState({
+      collapsedGroups,
+      filters,
+      confirmationPrefs,
+      expandedSubtasks,
+      // Kept so an external file change (which reloads this webview) does not
+      // interrupt continuous quick-add or lose keyboard focus mid-move.
+      quickAddColumn,
+      pendingFocusTaskId,
+    });
   }
 
   function getAllTasks() {
@@ -518,6 +576,15 @@
     header.appendChild(count);
 
     const colActions = el('div', 'column-actions');
+
+    if (column.tasks.length > 1) {
+      const sortBtn = el('button');
+      sortBtn.textContent = '⇅';
+      sortBtn.title = 'この列を並べ替え';
+      sortBtn.onclick = () => openSortModal(column.name);
+      colActions.appendChild(sortBtn);
+    }
+
     const delColBtn = el('button');
     delColBtn.textContent = '✕';
     delColBtn.title = '列を削除';
@@ -884,7 +951,7 @@
     // Add task button
     const addBtn = el('button', 'add-card-btn');
     addBtn.textContent = '+ タスクを追加';
-    addBtn.onclick = () => openTaskModal(null, column.name);
+    addBtn.onclick = () => startQuickAdd(column.name);
     addBtn.addEventListener('dragover', (e) => {
       if (dragData && dragData.type === 'column') return;
       e.preventDefault();
@@ -915,10 +982,95 @@
         group: '',
       });
     });
-    body.appendChild(addBtn);
+
+    if (quickAddColumn === column.name) {
+      body.appendChild(renderQuickAddForm(column.name));
+    } else {
+      body.appendChild(addBtn);
+    }
 
     colEl.appendChild(body);
     return colEl;
+  }
+
+  // Quick add: type a title and press Enter to keep adding cards without
+  // opening the full form. "詳細入力" escalates to the full task modal.
+  function startQuickAdd(columnName) {
+    quickAddColumn = columnName;
+    persistState();
+    render();
+  }
+
+  function cancelQuickAdd() {
+    quickAddColumn = null;
+    persistState();
+    render();
+  }
+
+  function renderQuickAddForm(columnName) {
+    const wrap = el('div', 'quick-add');
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:4px;';
+
+    const input = el('input', 'quick-add-input');
+    input.type = 'text';
+    input.placeholder = 'タイトルを入力して Enter';
+    input.style.cssText = 'width:100%;background:var(--input-bg);color:var(--input-fg);border:1px solid var(--accent);border-radius:3px;padding:6px 8px;font-size:13px;font-family:inherit;';
+
+    const submit = () => {
+      const title = input.value.trim();
+      if (!title) {
+        cancelQuickAdd();
+        return;
+      }
+      // Stay in quick-add mode so the next card can be typed right away.
+      vscode.postMessage({ type: 'addTask', column: columnName, title });
+      input.value = '';
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelQuickAdd();
+      }
+    });
+    wrap.appendChild(input);
+
+    const row = el('div');
+    row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
+
+    const addBtn = el('button');
+    addBtn.type = 'button';
+    addBtn.textContent = '追加';
+    addBtn.style.cssText = 'padding:3px 10px;font-size:11px;';
+    addBtn.onclick = submit;
+    row.appendChild(addBtn);
+
+    const detailBtn = el('button', 'secondary');
+    detailBtn.type = 'button';
+    detailBtn.textContent = '詳細入力';
+    detailBtn.title = '説明や期限などを入力する画面を開く';
+    detailBtn.style.cssText = 'padding:3px 10px;font-size:11px;';
+    detailBtn.onclick = () => {
+      const title = input.value.trim();
+      quickAddColumn = null;
+      persistState();
+      render();
+      openTaskModal(null, columnName, title);
+    };
+    row.appendChild(detailBtn);
+
+    const cancelBtn = el('button', 'secondary');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'キャンセル';
+    cancelBtn.style.cssText = 'padding:3px 10px;font-size:11px;margin-left:auto;';
+    cancelBtn.onclick = () => cancelQuickAdd();
+    row.appendChild(cancelBtn);
+
+    wrap.appendChild(row);
+    return wrap;
   }
 
   function renderCard(task, columnName) {
@@ -953,15 +1105,43 @@
       openTaskModal(task, columnName);
     });
 
-    // Keyboard access: focusable card that opens the editor with Enter/Space.
+    // Keyboard access: focusable card with editing, navigation, and movement.
     card.tabIndex = 0;
     card.setAttribute('role', 'button');
     card.setAttribute('aria-label', task.title + ' を編集');
     card.addEventListener('keydown', (e) => {
       if (e.target !== card) return;
+
+      // Enter / Space: open the editor.
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         openTaskModal(task, columnName);
+        return;
+      }
+
+      // n: quick-add a task to this card's column.
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        startQuickAdd(columnName);
+        return;
+      }
+
+      if (!e.key.startsWith('Arrow')) return;
+
+      // Ctrl/Cmd + arrows: move the card between/within columns.
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        if (e.key === 'ArrowUp') moveCardVertically(task, columnName, -1);
+        else if (e.key === 'ArrowDown') moveCardVertically(task, columnName, 1);
+        else if (e.key === 'ArrowLeft') moveCardHorizontally(task, columnName, -1);
+        else if (e.key === 'ArrowRight') moveCardHorizontally(task, columnName, 1);
+        return;
+      }
+
+      // Plain arrows: move focus between cards.
+      if (!e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        focusAdjacentCard(card, e.key);
       }
     });
 
@@ -975,6 +1155,13 @@
       const pb = el('span', 'priority-badge priority-' + task.priority);
       pb.textContent = formatFilterLabel(task.priority);
       meta.appendChild(pb);
+    }
+    if (task.repeat) {
+      const rb = el('span', 'priority-badge');
+      rb.textContent = '🔁 ' + formatRepeatLabel(task.repeat);
+      rb.title = '完了列に移動すると次回分が作成されます';
+      rb.style.cssText = 'background:var(--badge-bg);color:var(--badge-fg);text-transform:none;';
+      meta.appendChild(rb);
     }
     if (task.workload && task.workload !== 'normal') {
       const wb = el('span', 'workload-badge workload-' + task.workload);
@@ -996,7 +1183,7 @@
 
     if (task.description) {
       const desc = el('div', 'card-desc');
-      desc.textContent = task.description;
+      appendTextWithLinks(desc, task.description);
       card.appendChild(desc);
     }
 
@@ -1014,12 +1201,53 @@
       card.appendChild(sourceEl);
     }
 
-    // Subtasks - only show progress count
+    // Subtasks: progress toggles an inline checklist that can be ticked here.
     if (task.subtasks && task.subtasks.length > 0) {
       const doneCount = task.subtasks.filter(s => s.done).length;
-      const prog = el('div', 'subtask-progress');
-      prog.textContent = '✓ ' + doneCount + '/' + task.subtasks.length + ' サブタスク';
+      const expanded = !!expandedSubtasks[task.id];
+
+      const prog = el('button', 'subtask-progress');
+      prog.type = 'button';
+      prog.textContent = (expanded ? '▾ ' : '▸ ') + '✓ ' + doneCount + '/' + task.subtasks.length + ' サブタスク';
+      prog.title = expanded ? 'サブタスクを隠す' : 'サブタスクを表示';
+      prog.style.cssText = 'display:block;background:transparent;color:var(--fg);border:none;padding:0;margin-bottom:3px;font-size:10px;opacity:0.7;cursor:pointer;font-family:inherit;text-align:left;';
+      prog.onclick = (e) => {
+        e.stopPropagation();
+        expandedSubtasks[task.id] = !expanded;
+        persistState();
+        render();
+      };
       card.appendChild(prog);
+
+      if (expanded) {
+        const list = el('div', 'card-subtasks');
+        task.subtasks.forEach((subtask, index) => {
+          const row = el('label', 'subtask-item' + (subtask.done ? ' done' : ''));
+          row.style.cssText = 'display:flex;align-items:center;gap:5px;padding:1px 0;cursor:pointer;';
+          row.addEventListener('click', (e) => e.stopPropagation());
+
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = !!subtask.done;
+          cb.style.margin = '0';
+          cb.onclick = (e) => {
+            e.stopPropagation();
+            vscode.postMessage({
+              type: 'toggleSubtask',
+              taskId: task.id,
+              index,
+              done: cb.checked,
+            });
+          };
+          row.appendChild(cb);
+
+          const label = el('span');
+          label.textContent = subtask.title;
+          row.appendChild(label);
+          list.appendChild(row);
+        });
+        card.appendChild(list);
+      }
     }
 
     if (task.tags && task.tags.length > 0) {
@@ -1062,6 +1290,17 @@
       overlay.appendChild(archiveBtn);
     }
 
+    if (boardConfig.isArchiveBoard === true) {
+      const restoreBtn = el('button', 'card-action action-source');
+      restoreBtn.textContent = '⇧';
+      restoreBtn.title = '元のボードに復元';
+      restoreBtn.onclick = (e) => {
+        e.stopPropagation();
+        restoreTask(task, columnName);
+      };
+      overlay.appendChild(restoreBtn);
+    }
+
     const delBtn = el('button', 'card-action action-delete');
     delBtn.textContent = '🗑';
     delBtn.title = 'タスクを削除';
@@ -1102,7 +1341,7 @@
     if (task.source) metaValues.push('ソース: ' + task.source);
     appendDetail(modal, '詳細', metaValues.join('\n'));
 
-    appendDetail(modal, '説明', task.description || '', '説明はありません');
+    appendDetail(modal, '説明', task.description || '', '説明はありません', true);
 
     if (task.tags && task.tags.length > 0) {
       const section = detailSection('タグ');
@@ -1232,6 +1471,74 @@
     vscode.postMessage({ type: 'openSource', source });
   }
 
+  function restoreTask(task, columnName, afterRestore) {
+    requestConfirmation('restoreTask', {
+      title: 'カードを復元',
+      message: '「' + task.title + '」を' + columnName + 'に戻しますか?',
+      confirmText: '復元',
+      danger: false,
+    }, () => {
+      vscode.postMessage({ type: 'restoreTask', taskId: task.id });
+      if (afterRestore) afterRestore();
+    });
+  }
+
+  function requestUndo() {
+    vscode.postMessage({ type: 'undo' });
+  }
+
+  const REPEAT_LABELS = {
+    daily: '毎日',
+    weekly: '毎週',
+    monthly: '毎月',
+    yearly: '毎年',
+  };
+
+  function formatRepeatLabel(value) {
+    return REPEAT_LABELS[value] || value;
+  }
+
+  function openSortModal(columnName) {
+    const overlay = el('div', 'modal-overlay');
+    const modal = el('div', 'modal confirm-modal');
+
+    const title = el('h2');
+    title.textContent = '列の並べ替え';
+    modal.appendChild(title);
+
+    const message = el('div', 'confirm-message');
+    message.textContent = '「' + columnName + '」のカードを並べ替えます。グループ内での並びが対象です。';
+    modal.appendChild(message);
+
+    const options = el('div');
+    options.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-bottom:14px;';
+    [['due', '期限順(期限なしは最後)'], ['priority', '優先度順'], ['title', 'タイトル順']].forEach(([by, label]) => {
+      const btn = el('button', 'secondary');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.style.textAlign = 'left';
+      btn.onclick = () => {
+        overlay.remove();
+        vscode.postMessage({ type: 'sortColumn', name: columnName, by });
+      };
+      options.appendChild(btn);
+    });
+    modal.appendChild(options);
+
+    const actions = el('div', 'modal-actions');
+    const cancelBtn = el('button', 'secondary');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'キャンセル';
+    cancelBtn.onclick = () => overlay.remove();
+    actions.appendChild(cancelBtn);
+    modal.appendChild(actions);
+
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(() => cancelBtn.focus(), 50);
+  }
+
   function requestConfirmation(kind, options, onConfirm) {
     if (confirmationPrefs[kind]) {
       onConfirm();
@@ -1298,10 +1605,14 @@
     setTimeout(() => confirmBtn.focus(), 50);
   }
 
-  function appendDetail(modal, label, value, emptyText) {
+  function appendDetail(modal, label, value, emptyText, linkify) {
     const section = detailSection(label);
     const text = el('div', 'detail-text' + (value ? '' : ' detail-empty'));
-    text.textContent = value || emptyText || '';
+    if (value && linkify) {
+      appendTextWithLinks(text, value);
+    } else {
+      text.textContent = value || emptyText || '';
+    }
     section.appendChild(text);
     modal.appendChild(section);
   }
@@ -1438,6 +1749,75 @@
     document.querySelectorAll('.column-drop-indicator').forEach(el => el.remove());
   }
 
+  // --- Keyboard card movement and navigation ---
+
+  function moveCardVertically(task, columnName, delta) {
+    const column = board.columns.find(c => c.name === columnName);
+    if (!column) return;
+    const idx = column.tasks.findIndex(t => t.id === task.id);
+    if (idx === -1) return;
+    const target = idx + delta;
+    if (target < 0 || target >= column.tasks.length) return;
+
+    pendingFocusTaskId = task.id;
+    persistState();
+    vscode.postMessage({
+      type: 'moveTaskToGroup',
+      taskId: task.id,
+      fromColumn: columnName,
+      toColumn: columnName,
+      toIndex: target,
+      group: task.group || '',
+    });
+  }
+
+  function moveCardHorizontally(task, columnName, delta) {
+    const colIdx = board.columns.findIndex(c => c.name === columnName);
+    if (colIdx === -1) return;
+    const targetCol = board.columns[colIdx + delta];
+    if (!targetCol) return;
+
+    pendingFocusTaskId = task.id;
+    persistState();
+    vscode.postMessage({
+      type: 'moveTaskToGroup',
+      taskId: task.id,
+      fromColumn: columnName,
+      toColumn: targetCol.name,
+      toIndex: targetCol.tasks.length,
+      group: '',
+    });
+  }
+
+  // Cards inside a collapsed group are hidden and cannot take focus, so
+  // keyboard navigation skips them.
+  function visibleCardsIn(columnEl) {
+    return Array.from(columnEl.querySelectorAll('.card')).filter(card => card.offsetParent !== null);
+  }
+
+  function focusAdjacentCard(currentCard, key) {
+    const columnEl = currentCard.closest('.column');
+    if (!columnEl) return;
+
+    const currentCards = visibleCardsIn(columnEl);
+    const rowIdx = Math.max(0, currentCards.indexOf(currentCard));
+
+    if (key === 'ArrowUp' || key === 'ArrowDown') {
+      const target = currentCards[rowIdx + (key === 'ArrowDown' ? 1 : -1)];
+      if (target) target.focus();
+      return;
+    }
+
+    // ArrowLeft / ArrowRight: jump to the nearest card in the adjacent column.
+    const columns = Array.from(document.querySelectorAll('.board .column'));
+    const colPos = columns.indexOf(columnEl);
+    const targetCol = columns[colPos + (key === 'ArrowRight' ? 1 : -1)];
+    if (!targetCol) return;
+    const targetCards = visibleCardsIn(targetCol);
+    if (targetCards.length === 0) return;
+    targetCards[Math.min(rowIdx, targetCards.length - 1)].focus();
+  }
+
   function getColumnBlocks(boardEl) {
     return Array.from(boardEl.children).filter(child =>
       child.classList.contains('column') && !child.classList.contains('dragging')
@@ -1482,7 +1862,7 @@
 
   // --- Modals ---
 
-  function openTaskModal(existingTask, columnName) {
+  function openTaskModal(existingTask, columnName, prefillTitle) {
     const overlay = el('div', 'modal-overlay');
     const modal = el('div', 'modal');
 
@@ -1507,7 +1887,7 @@
     modal.appendChild(labelEl('タイトル'));
     const titleInput = el('input');
     titleInput.type = 'text';
-    titleInput.value = existingTask ? existingTask.title : '';
+    titleInput.value = existingTask ? existingTask.title : (prefillTitle || '');
     titleInput.placeholder = 'タスクのタイトル...';
     modal.appendChild(titleInput);
 
@@ -1515,7 +1895,7 @@
     const descInput = el('textarea');
     descInput.rows = 7;
     descInput.value = existingTask ? existingTask.description : '';
-    descInput.placeholder = '説明(任意)...';
+    descInput.placeholder = '説明(任意)...\n[設計メモ](docs/design.md) のように書くとリンクになります';
     modal.appendChild(descInput);
 
     // Assignee & Group row
@@ -1570,12 +1950,44 @@
 
     modal.appendChild(row1);
 
-    // Due date
+    // Due date, with shortcuts for the most common relative dates.
     modal.appendChild(labelEl('期限日'));
     const dueDateInput = el('input');
     dueDateInput.type = 'date';
     dueDateInput.value = existingTask ? (existingTask.dueDate || '') : '';
+    dueDateInput.style.marginBottom = '6px';
     modal.appendChild(dueDateInput);
+
+    const dueQuick = el('div');
+    dueQuick.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;';
+    [['今日', 0], ['明日', 1], ['来週', 7]].forEach(([label, offset]) => {
+      const btn = el('button', 'secondary');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.style.cssText = 'padding:3px 10px;font-size:11px;';
+      btn.onclick = () => { dueDateInput.value = isoAfterDays(offset); };
+      dueQuick.appendChild(btn);
+    });
+    const clearDue = el('button', 'secondary');
+    clearDue.type = 'button';
+    clearDue.textContent = 'クリア';
+    clearDue.style.cssText = 'padding:3px 10px;font-size:11px;margin-left:auto;';
+    clearDue.onclick = () => { dueDateInput.value = ''; };
+    dueQuick.appendChild(clearDue);
+    modal.appendChild(dueQuick);
+
+    // Recurrence: a new card is created when this one reaches a completed column.
+    modal.appendChild(labelEl('繰り返し'));
+    const repeatSelect = document.createElement('select');
+    [['', 'なし'], ['daily', '毎日'], ['weekly', '毎週'], ['monthly', '毎月'], ['yearly', '毎年']].forEach(([value, label]) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      repeatSelect.appendChild(opt);
+    });
+    repeatSelect.value = existingTask ? (existingTask.repeat || '') : '';
+    repeatSelect.title = '完了扱いの列に移動すると、次回分が元の列に作成されます';
+    modal.appendChild(repeatSelect);
 
     // Source is not user-editable in the form, but preserve any existing
     // value (e.g. TODO-import backlinks) so editing a task does not drop it.
@@ -1639,7 +2051,67 @@
     tagsInput.type = 'text';
     tagsInput.value = existingTask ? existingTask.tags.join(', ') : '';
     tagsInput.placeholder = 'bug, feature, urgent';
+    tagsInput.style.marginBottom = '6px';
     modal.appendChild(tagsInput);
+
+    // Offer tags already used on this board so they stay consistent.
+    const knownTags = getFilterOptions().tags;
+    let tagSuggestions = null;
+    if (knownTags.length > 0) {
+      const hint = el('div');
+      hint.textContent = '既存のタグ(クリックで追加/削除)';
+      hint.style.cssText = 'font-size:10px;opacity:0.6;margin-bottom:4px;';
+      modal.appendChild(hint);
+
+      tagSuggestions = el('div');
+      tagSuggestions.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;max-height:96px;overflow-y:auto;';
+      modal.appendChild(tagSuggestions);
+      tagsInput.addEventListener('input', renderTagSuggestions);
+      renderTagSuggestions();
+    }
+
+    function parseTagList(value) {
+      return value.split(',').map(tag => tag.trim()).filter(Boolean);
+    }
+
+    // The text after the last comma is the tag currently being typed.
+    function typedTagFragment(value) {
+      return value.slice(value.lastIndexOf(',') + 1).trim();
+    }
+
+    function renderTagSuggestions() {
+      if (!tagSuggestions) return;
+      tagSuggestions.innerHTML = '';
+
+      const selected = parseTagList(tagsInput.value);
+      const fragment = typedTagFragment(tagsInput.value).toLowerCase();
+
+      for (const tag of knownTags) {
+        const isSelected = selected.includes(tag);
+        // While typing, narrow the list but always keep chosen tags visible.
+        if (!isSelected && fragment && !tag.toLowerCase().includes(fragment)) continue;
+
+        const chip = el('button', 'filter-chip' + (isSelected ? ' active' : ''));
+        chip.type = 'button';
+        chip.textContent = tag;
+        chip.title = isSelected ? 'クリックで削除' : 'クリックで追加';
+        chip.onclick = () => {
+          const tags = parseTagList(tagsInput.value);
+          if (isSelected) {
+            tagsInput.value = tags.filter(item => item !== tag).join(', ');
+          } else {
+            // Replace the partially typed tag with the chosen one.
+            const typed = typedTagFragment(tagsInput.value);
+            if (typed && tags[tags.length - 1] === typed) tags.pop();
+            tags.push(tag);
+            tagsInput.value = tags.join(', ');
+          }
+          renderTagSuggestions();
+          tagsInput.focus();
+        };
+        tagSuggestions.appendChild(chip);
+      }
+    }
 
     function applyTaskTemplate(templateId) {
       const template = taskTemplates.find(t => t.id === templateId);
@@ -1651,10 +2123,12 @@
       priSelect.value = template.priority || 'medium';
       wlSelect.value = template.workload || 'normal';
       dueDateInput.value = '';
+      repeatSelect.value = '';
       sourceValue = '';
       subtasks = (template.subtasks || []).map(st => ({ ...st }));
       tagsInput.value = (template.tags || []).join(', ');
       renderSubtasks();
+      renderTagSuggestions();
     }
 
     if (templateSelect) {
@@ -1682,6 +2156,16 @@
         };
         actions.appendChild(archiveBtn);
       }
+
+      if (boardConfig.isArchiveBoard === true) {
+        const restoreBtn = el('button', 'secondary');
+        restoreBtn.type = 'button';
+        restoreBtn.textContent = '復元';
+        restoreBtn.onclick = () => {
+          restoreTask(existingTask, columnName, () => overlay.remove());
+        };
+        actions.appendChild(restoreBtn);
+      }
     }
 
     const cancelBtn = el('button', 'secondary');
@@ -1695,6 +2179,7 @@
 
     const saveBtn = el('button');
     saveBtn.textContent = existingTask ? '保存' : '追加';
+    saveBtn.title = 'Ctrl+Enter で保存';
     saveBtn.onclick = () => {
       const title = titleInput.value.trim();
       if (!title) { titleInput.focus(); return; }
@@ -1719,6 +2204,7 @@
           assignee: assigneeInput.value.trim(),
           source: sourceValue,
           group: groupInput.value.trim(),
+          repeat: repeatSelect.value,
         });
       } else {
         vscode.postMessage({
@@ -1734,12 +2220,22 @@
           assignee: assigneeInput.value.trim(),
           source: sourceValue,
           group: groupInput.value.trim(),
+          repeat: repeatSelect.value,
         });
       }
       overlay.remove();
     };
     actions.appendChild(saveBtn);
     modal.appendChild(actions);
+
+    // Ctrl+Enter (Cmd+Enter on macOS) saves from anywhere in the form,
+    // including while typing in the multi-line description field.
+    modal.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        saveBtn.click();
+      }
+    });
 
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
     overlay.appendChild(modal);
@@ -1893,16 +2389,90 @@
     return l;
   }
 
+  // Render plain text, turning Markdown links [label](target) and bare http(s)
+  // URLs into clickable links. Text is always inserted as text nodes, so no
+  // markup from task content is ever parsed as HTML.
+  function appendTextWithLinks(container, text) {
+    const value = String(text == null ? '' : text);
+    const pattern = /\[([^\]\n]*)\]\(([^)\s]+)\)|(https?:\/\/[^\s<>"'`]+)/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = pattern.exec(value)) !== null) {
+      let label;
+      let target;
+      let consumed;
+
+      if (match[3]) {
+        // Bare URL: trailing punctuation usually belongs to the sentence.
+        target = match[3].replace(/[.,;:!?)\]}"'、。，．）］｝」』]+$/, '');
+        if (!target) {
+          pattern.lastIndex = match.index + match[0].length;
+          continue;
+        }
+        label = target;
+        consumed = target.length;
+      } else {
+        target = match[2];
+        label = match[1] || match[2];
+        consumed = match[0].length;
+      }
+
+      if (match.index > lastIndex) {
+        container.appendChild(document.createTextNode(value.slice(lastIndex, match.index)));
+      }
+      container.appendChild(createLink(label, target));
+
+      lastIndex = match.index + consumed;
+      pattern.lastIndex = lastIndex;
+    }
+
+    if (lastIndex < value.length) {
+      container.appendChild(document.createTextNode(value.slice(lastIndex)));
+    }
+  }
+
+  function createLink(label, target) {
+    const isWebLink = /^https?:\/\//i.test(target);
+    const link = document.createElement('a');
+    link.href = target;
+    link.textContent = label;
+    link.title = isWebLink ? target + ' を開く' : target + ' をエディタで開く';
+    link.style.cssText = 'color:var(--vscode-textLink-foreground,#3794ff);text-decoration:underline;cursor:pointer;word-break:break-all;';
+    link.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isWebLink) {
+        vscode.postMessage({ type: 'openExternal', url: target });
+      } else {
+        vscode.postMessage({ type: 'openFile', path: target });
+      }
+    };
+    return link;
+  }
+
+  function isoAfterDays(days) {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() + days);
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return date.getFullYear() + '-' + month + '-' + day;
+  }
+
   // Listen for board updates from extension
   window.addEventListener('message', (event) => {
     const msg = event.data;
     if (msg.type === 'boardUpdate') {
       board = msg.board;
+      if (typeof msg.canUndo === 'boolean') canUndo = msg.canUndo;
       render();
     } else if (msg.type === 'openTaskDetails') {
       openTaskDetailsById(msg.taskId);
     } else if (msg.type === 'archiveResult') {
       showNotice(msg.message || (msg.ok ? 'カードをアーカイブしました。' : 'カードをアーカイブできませんでした。'), msg.ok);
+    } else if (msg.type === 'notice') {
+      showNotice(msg.message, msg.ok !== false);
     }
   });
 
@@ -1952,6 +2522,165 @@
       }
     }
   });
+
+  // "?" opens the keyboard shortcut cheat sheet from the board (not while
+  // typing in a field or when another modal is already open).
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (isTypingTarget(document.activeElement)) return;
+    if (document.querySelector('.modal-overlay')) return;
+    e.preventDefault();
+    openShortcutHelp();
+  });
+
+  // Ctrl/Cmd+Z undoes the last board change. Text fields keep their own
+  // native undo, so only handle this on the board itself.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'z' && e.key !== 'Z') return;
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+    if (isTypingTarget(document.activeElement)) return;
+    if (document.querySelector('.modal-overlay')) return;
+    e.preventDefault();
+    requestUndo();
+  });
+
+  function isTypingTarget(node) {
+    if (!node) return false;
+    const tag = node.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || node.isContentEditable;
+  }
+
+  // --- Right-button drag panning ---
+
+  // Panning applies to whichever element actually scrolls in each axis; which
+  // one that is depends on how the webview lays out the document.
+  function panBy(dx, dy) {
+    const seen = new Set();
+    for (const candidate of [document.scrollingElement, document.body, document.documentElement]) {
+      if (!candidate || seen.has(candidate)) continue;
+      seen.add(candidate);
+      if (dx && candidate.scrollWidth > candidate.clientWidth) {
+        candidate.scrollLeft += dx;
+        dx = 0;
+      }
+      if (dy && candidate.scrollHeight > candidate.clientHeight) {
+        candidate.scrollTop += dy;
+        dy = 0;
+      }
+    }
+  }
+
+  function isPannableTarget(target) {
+    if (!(target instanceof Element)) return true;
+    // Text fields and modals keep their normal right-click behaviour.
+    return !isTypingTarget(target) && !target.closest('.modal-overlay');
+  }
+
+  (function setupPanning() {
+    let panning = false;
+    let lastX = 0;
+    let lastY = 0;
+    let previousCursor = '';
+    let previousUserSelect = '';
+
+    document.addEventListener('mousedown', (e) => {
+      if (e.button !== 2 || !isPannableTarget(e.target)) return;
+      panning = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      previousCursor = document.body.style.cursor;
+      previousUserSelect = document.body.style.userSelect;
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!panning) return;
+      panBy(lastX - e.clientX, lastY - e.clientY);
+      lastX = e.clientX;
+      lastY = e.clientY;
+      e.preventDefault();
+    });
+
+    function stopPanning() {
+      if (!panning) return;
+      panning = false;
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    }
+
+    document.addEventListener('mouseup', (e) => {
+      if (e.button === 2) stopPanning();
+    });
+    document.addEventListener('mouseleave', stopPanning);
+    window.addEventListener('blur', stopPanning);
+
+    // The right button is the pan gesture on the board, so suppress the
+    // default menu there. Platforms differ on whether contextmenu fires on
+    // press or release, so decide from the event target instead of pan state.
+    document.addEventListener('contextmenu', (e) => {
+      if (isPannableTarget(e.target)) {
+        e.preventDefault();
+      }
+    });
+  })();
+
+  function openShortcutHelp() {
+    const overlay = el('div', 'modal-overlay');
+    const modal = el('div', 'modal shortcut-help-modal');
+
+    const header = el('div', 'modal-header');
+    const heading = el('h2');
+    heading.textContent = 'キーボードショートカット';
+    header.appendChild(heading);
+    const closeBtn = el('button', 'modal-icon-btn');
+    closeBtn.textContent = '×';
+    closeBtn.title = '閉じる';
+    closeBtn.onclick = () => overlay.remove();
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    const shortcuts = [
+      ['Enter / Space', 'カードの編集画面を開く'],
+      ['Ctrl+Enter', '編集画面で保存'],
+      ['Escape', 'モーダルを閉じる'],
+      ['↑ / ↓', '同じ列の前後のカードへフォーカス移動'],
+      ['← / →', '隣の列のカードへフォーカス移動'],
+      ['Ctrl+↑ / Ctrl+↓', 'カードを列内で並べ替え'],
+      ['Ctrl+← / Ctrl+→', 'カードを隣の列へ移動'],
+      ['n', 'その列にクイック追加(Enter で連続追加)'],
+      ['Ctrl+Z', '直前の操作を元に戻す'],
+      ['?', 'このショートカット一覧を表示'],
+    ];
+
+    const list = el('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:2px;margin-top:4px;';
+    for (const [keys, desc] of shortcuts) {
+      const row = el('div');
+      row.style.cssText = 'display:flex;gap:12px;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--card-border);';
+      const kbd = el('span');
+      kbd.textContent = keys;
+      kbd.style.cssText = 'font-family:var(--vscode-editor-font-family,monospace);font-size:11px;padding:2px 7px;border:1px solid var(--card-border);border-radius:4px;background:var(--input-bg);white-space:nowrap;flex-shrink:0;';
+      const d = el('span');
+      d.textContent = desc;
+      d.style.cssText = 'font-size:12px;opacity:0.85;text-align:right;';
+      row.appendChild(kbd);
+      row.appendChild(d);
+      list.appendChild(row);
+    }
+    modal.appendChild(list);
+
+    const note = el('div');
+    note.textContent = 'macOS では Ctrl の代わりに Cmd(⌘)も使えます。カードは Tab でフォーカスできます。'
+      + ' ボード上を右ドラッグすると画面をパン(スクロール)できます。';
+    note.style.cssText = 'margin-top:12px;font-size:11px;opacity:0.65;line-height:1.5;';
+    modal.appendChild(note);
+
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(() => closeBtn.focus(), 50);
+  }
 
   // Initial render
   render();
