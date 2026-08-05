@@ -2051,7 +2051,67 @@
     tagsInput.type = 'text';
     tagsInput.value = existingTask ? existingTask.tags.join(', ') : '';
     tagsInput.placeholder = 'bug, feature, urgent';
+    tagsInput.style.marginBottom = '6px';
     modal.appendChild(tagsInput);
+
+    // Offer tags already used on this board so they stay consistent.
+    const knownTags = getFilterOptions().tags;
+    let tagSuggestions = null;
+    if (knownTags.length > 0) {
+      const hint = el('div');
+      hint.textContent = '既存のタグ(クリックで追加/削除)';
+      hint.style.cssText = 'font-size:10px;opacity:0.6;margin-bottom:4px;';
+      modal.appendChild(hint);
+
+      tagSuggestions = el('div');
+      tagSuggestions.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;max-height:96px;overflow-y:auto;';
+      modal.appendChild(tagSuggestions);
+      tagsInput.addEventListener('input', renderTagSuggestions);
+      renderTagSuggestions();
+    }
+
+    function parseTagList(value) {
+      return value.split(',').map(tag => tag.trim()).filter(Boolean);
+    }
+
+    // The text after the last comma is the tag currently being typed.
+    function typedTagFragment(value) {
+      return value.slice(value.lastIndexOf(',') + 1).trim();
+    }
+
+    function renderTagSuggestions() {
+      if (!tagSuggestions) return;
+      tagSuggestions.innerHTML = '';
+
+      const selected = parseTagList(tagsInput.value);
+      const fragment = typedTagFragment(tagsInput.value).toLowerCase();
+
+      for (const tag of knownTags) {
+        const isSelected = selected.includes(tag);
+        // While typing, narrow the list but always keep chosen tags visible.
+        if (!isSelected && fragment && !tag.toLowerCase().includes(fragment)) continue;
+
+        const chip = el('button', 'filter-chip' + (isSelected ? ' active' : ''));
+        chip.type = 'button';
+        chip.textContent = tag;
+        chip.title = isSelected ? 'クリックで削除' : 'クリックで追加';
+        chip.onclick = () => {
+          const tags = parseTagList(tagsInput.value);
+          if (isSelected) {
+            tagsInput.value = tags.filter(item => item !== tag).join(', ');
+          } else {
+            // Replace the partially typed tag with the chosen one.
+            const typed = typedTagFragment(tagsInput.value);
+            if (typed && tags[tags.length - 1] === typed) tags.pop();
+            tags.push(tag);
+            tagsInput.value = tags.join(', ');
+          }
+          renderTagSuggestions();
+          tagsInput.focus();
+        };
+        tagSuggestions.appendChild(chip);
+      }
+    }
 
     function applyTaskTemplate(templateId) {
       const template = taskTemplates.find(t => t.id === templateId);
@@ -2068,6 +2128,7 @@
       subtasks = (template.subtasks || []).map(st => ({ ...st }));
       tagsInput.value = (template.tags || []).join(', ');
       renderSubtasks();
+      renderTagSuggestions();
     }
 
     if (templateSelect) {
