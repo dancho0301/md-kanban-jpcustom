@@ -6,6 +6,8 @@
   let pendingFocusTaskId = null;
   let collapsedGroups = {};
   let expandedSubtasks = {};
+  let expandedDescriptions = {};
+  let showDescriptions = true;
   let quickAddColumn = null;
   let canUndo = boardConfig.canUndo === true;
   let filters = {
@@ -107,6 +109,12 @@
   if (savedState && savedState.expandedSubtasks) {
     expandedSubtasks = savedState.expandedSubtasks;
   }
+  if (savedState && savedState.expandedDescriptions) {
+    expandedDescriptions = savedState.expandedDescriptions;
+  }
+  if (savedState && typeof savedState.showDescriptions === 'boolean') {
+    showDescriptions = savedState.showDescriptions;
+  }
   if (savedState && savedState.quickAddColumn) {
     quickAddColumn = savedState.quickAddColumn;
   }
@@ -135,6 +143,19 @@
     undoBtn.style.opacity = canUndo ? '' : '0.5';
     undoBtn.onclick = () => requestUndo();
     actions.appendChild(undoBtn);
+
+    // Accent styling marks the "on" state, grey the "off" state.
+    const descBtn = el('button', showDescriptions ? '' : 'secondary');
+    descBtn.textContent = '📝 説明';
+    descBtn.title = showDescriptions
+      ? 'カードの説明を隠す'
+      : 'カードの説明を表示する';
+    descBtn.onclick = () => {
+      showDescriptions = !showDescriptions;
+      persistState();
+      render();
+    };
+    actions.appendChild(descBtn);
 
     const mdBtn = el('button', 'secondary');
     mdBtn.textContent = '📄 Markdownを表示';
@@ -375,6 +396,8 @@
       filters,
       confirmationPrefs,
       expandedSubtasks,
+      expandedDescriptions,
+      showDescriptions,
       // Kept so an external file change (which reloads this webview) does not
       // interrupt continuous quick-add or lose keyboard focus mid-move.
       quickAddColumn,
@@ -1170,21 +1193,50 @@
     }
     if (meta.childNodes.length > 0) card.appendChild(meta);
 
-    // Due date
-    if (task.dueDate) {
-      const due = el('div', 'card-due');
-      const today = new Date(); today.setHours(0,0,0,0);
-      const dueDate = new Date(task.dueDate + 'T00:00:00');
-      const isOverdue = dueDate < today;
-      if (isOverdue) due.classList.add('overdue');
-      due.textContent = '📅 ' + task.dueDate + (isOverdue ? ' (期限超過)' : '');
-      card.appendChild(due);
+    // Dates: shown as a start → due range when both are set.
+    if (task.dueDate || task.startDate) {
+      const dates = el('div', 'card-due');
+      if (task.dueDate) {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const dueDate = new Date(task.dueDate + 'T00:00:00');
+        const isOverdue = dueDate < today;
+        if (isOverdue) dates.classList.add('overdue');
+        dates.textContent = '📅 '
+          + (task.startDate ? task.startDate + ' → ' : '')
+          + task.dueDate
+          + (isOverdue ? ' (期限超過)' : '');
+      } else {
+        dates.textContent = '▶ ' + task.startDate;
+        dates.title = '開始日';
+      }
+      card.appendChild(dates);
     }
 
-    if (task.description) {
+    if (task.description && showDescriptions) {
+      const expanded = !!expandedDescriptions[task.id];
+      const isLong = isLongDescription(task.description);
+
       const desc = el('div', 'card-desc');
       appendTextWithLinks(desc, task.description);
+      if (isLong && !expanded) {
+        // Clamp to a few lines; the class keeps the rest of the styling.
+        desc.style.cssText = 'display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;';
+      }
       card.appendChild(desc);
+
+      if (isLong) {
+        const toggle = el('button');
+        toggle.type = 'button';
+        toggle.textContent = expanded ? '▴ 折りたたむ' : '▾ 続きを表示';
+        toggle.style.cssText = 'display:block;background:transparent;color:var(--fg);border:none;padding:0;margin-bottom:6px;font-size:10px;opacity:0.7;cursor:pointer;font-family:inherit;text-align:left;';
+        toggle.onclick = (e) => {
+          e.stopPropagation();
+          expandedDescriptions[task.id] = !expanded;
+          persistState();
+          render();
+        };
+        card.appendChild(toggle);
+      }
     }
 
     // Assignee
@@ -1336,6 +1388,7 @@
     const metaValues = [];
     metaValues.push('優先度: ' + formatFilterLabel(task.priority || 'medium'));
     metaValues.push('作業量: ' + formatFilterLabel(task.workload || 'normal'));
+    if (task.startDate) metaValues.push('開始日: ' + task.startDate);
     if (task.dueDate) metaValues.push('期限: ' + task.dueDate);
     if (task.assignee) metaValues.push('担当者: ' + task.assignee);
     if (task.source) metaValues.push('ソース: ' + task.source);
@@ -1950,6 +2003,30 @@
 
     modal.appendChild(row1);
 
+    // Start date: pre-filled with today for new cards, editable afterwards.
+    modal.appendChild(labelEl('開始日'));
+    const startDateInput = el('input');
+    startDateInput.type = 'date';
+    startDateInput.value = existingTask ? (existingTask.startDate || '') : isoAfterDays(0);
+    startDateInput.style.marginBottom = '6px';
+    modal.appendChild(startDateInput);
+
+    const startQuick = el('div');
+    startQuick.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;';
+    const startToday = el('button', 'secondary');
+    startToday.type = 'button';
+    startToday.textContent = '今日';
+    startToday.style.cssText = 'padding:3px 10px;font-size:11px;';
+    startToday.onclick = () => { startDateInput.value = isoAfterDays(0); };
+    startQuick.appendChild(startToday);
+    const clearStart = el('button', 'secondary');
+    clearStart.type = 'button';
+    clearStart.textContent = 'クリア';
+    clearStart.style.cssText = 'padding:3px 10px;font-size:11px;margin-left:auto;';
+    clearStart.onclick = () => { startDateInput.value = ''; };
+    startQuick.appendChild(clearStart);
+    modal.appendChild(startQuick);
+
     // Due date, with shortcuts for the most common relative dates.
     modal.appendChild(labelEl('期限日'));
     const dueDateInput = el('input');
@@ -2200,6 +2277,7 @@
           priority: priSelect.value,
           workload: wlSelect.value,
           dueDate: dueDateInput.value,
+          startDate: startDateInput.value,
           subtasks: validSubtasks,
           assignee: assigneeInput.value.trim(),
           source: sourceValue,
@@ -2216,6 +2294,7 @@
           priority: priSelect.value,
           workload: wlSelect.value,
           dueDate: dueDateInput.value,
+          startDate: startDateInput.value,
           subtasks: validSubtasks,
           assignee: assigneeInput.value.trim(),
           source: sourceValue,
@@ -2449,6 +2528,14 @@
       }
     };
     return link;
+  }
+
+  // Rough line estimate for a ~280px card at 12px: about 22 characters a line.
+  // Used to decide whether a description needs a "show more" toggle.
+  function isLongDescription(text) {
+    return String(text)
+      .split('\n')
+      .reduce((lines, line) => lines + Math.max(1, Math.ceil(line.length / 22)), 0) > 3;
   }
 
   function isoAfterDays(days) {

@@ -17,6 +17,8 @@ export interface KanbanTask {
   priority: Priority;
   workload: Workload;
   dueDate: string;
+  /** Work start date; defaults to the creation date and can be edited. */
+  startDate?: string;
   subtasks: SubTask[];
   assignee: string;
   source: string;
@@ -183,6 +185,8 @@ export function parseMarkdown(content: string): KanbanBoard {
           currentTask.workload = val as Workload;
         } else if (key === 'due') {
           currentTask.dueDate = val;
+        } else if (key === 'start') {
+          currentTask.startDate = val;
         } else if (key === 'assignee') {
           currentTask.assignee = val;
         } else if (key === 'source') {
@@ -256,6 +260,9 @@ function serializeTask(lines: string[], task: KanbanTask, needsGroupOverride = f
   }
   if (task.workload && task.workload !== 'normal') {
     lines.push(`<!-- workload: ${task.workload} -->`);
+  }
+  if (task.startDate) {
+    lines.push(`<!-- start: ${task.startDate} -->`);
   }
   if (task.dueDate) {
     lines.push(`<!-- due: ${task.dueDate} -->`);

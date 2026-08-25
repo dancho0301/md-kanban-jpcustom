@@ -153,7 +153,7 @@ export class KanbanPanel {
   private async _handleMessage(message: { type: string; [key: string]: any }) {
     // Structural fields land on single markdown lines (# / ## / ### / #### / <!-- -->);
     // strip newlines so webview input cannot inject headings into the board file.
-    for (const key of ['title', 'name', 'oldName', 'newName', 'column', 'fromColumn', 'toColumn', 'group', 'assignee', 'source', 'dueDate']) {
+    for (const key of ['title', 'name', 'oldName', 'newName', 'column', 'fromColumn', 'toColumn', 'group', 'assignee', 'source', 'dueDate', 'startDate']) {
       if (typeof message[key] === 'string') {
         message[key] = toSingleLine(message[key]);
       }
@@ -188,6 +188,8 @@ export class KanbanPanel {
             priority: message.priority || 'medium',
             workload: message.workload || 'normal',
             dueDate: message.dueDate || '',
+            // New cards record when the work started unless one was given.
+            startDate: normalizeDate(message.startDate) || toDateIso(startOfToday()),
             subtasks: message.subtasks || [],
             assignee: message.assignee || '',
             source: message.source || '',
@@ -210,6 +212,7 @@ export class KanbanPanel {
             task.priority = message.priority || 'medium';
             task.workload = message.workload || 'normal';
             task.dueDate = message.dueDate || '';
+            task.startDate = normalizeDate(message.startDate);
             task.subtasks = message.subtasks || [];
             task.assignee = message.assignee || '';
             task.source = message.source || '';
@@ -722,6 +725,16 @@ const MUTATING_MESSAGE_TYPES = new Set([
 
 function cloneBoard(board: KanbanBoard): KanbanBoard {
   return JSON.parse(JSON.stringify(board)) as KanbanBoard;
+}
+
+function normalizeDate(value: unknown): string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim()) ? value.trim() : '';
+}
+
+function toDateIso(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 function normalizeRepeat(value: unknown): Repeat | undefined {
