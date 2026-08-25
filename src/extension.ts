@@ -1620,6 +1620,7 @@ async function addTodoToBoard(todo: CodeTodo): Promise<{ boardUri: vscode.Uri; c
     priority: 'medium',
     workload: 'normal',
     dueDate: '',
+    startDate: toDateIso(getTodayStart()),
     subtasks: [],
     assignee: '',
     source: `${todo.relativePath}:${todo.line}`,

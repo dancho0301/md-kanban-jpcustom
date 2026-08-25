@@ -115,6 +115,21 @@ test('repeat and archivedFrom metadata round-trip', () => {
   assert.equal(again.archivedFrom, '進行中');
 });
 
+test('start date round-trips and is omitted when unset', () => {
+  const board = parseMarkdown('# B\n\n## C\n\n#### T\n<!-- id: t1 -->\n<!-- start: 2026-07-23 -->\n<!-- due: 2026-07-30 -->\n');
+  const task = board.columns[0].tasks[0];
+  assert.equal(task.startDate, '2026-07-23');
+  assert.equal(task.dueDate, '2026-07-30');
+
+  const md = serializeToMarkdown(board);
+  assert.ok(md.includes('<!-- start: 2026-07-23 -->'));
+  assert.equal(parseMarkdown(md).columns[0].tasks[0].startDate, '2026-07-23');
+
+  const noStart = parseMarkdown('# B\n\n## C\n\n#### T\n<!-- id: t2 -->\n');
+  assert.equal(noStart.columns[0].tasks[0].startDate, undefined);
+  assert.ok(!serializeToMarkdown(noStart).includes('<!-- start:'));
+});
+
 test('unknown repeat values are ignored', () => {
   const board = parseMarkdown('# B\n\n## C\n\n#### T\n<!-- id: t1 -->\n<!-- repeat: hourly -->\n');
   assert.equal(board.columns[0].tasks[0].repeat, undefined);
