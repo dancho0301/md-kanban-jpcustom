@@ -6,6 +6,8 @@ import {
   KanbanBoard,
   KanbanColumn,
   KanbanTask,
+  ColumnSort,
+  COLUMN_SORT_VALUES,
   Repeat,
   REPEAT_VALUES,
   generateId,
@@ -101,6 +103,8 @@ export class KanbanPanel {
       const data = await vscode.workspace.fs.readFile(this._fileUri);
       content = Buffer.from(data).toString('utf-8');
       this._board = parseMarkdown(content);
+      // Hand-edited files may be out of order; show them by their sort rule.
+      applyColumnSorts(this._board);
     } catch {
       this._board = {
         title: 'カンバンボード',
@@ -144,6 +148,8 @@ export class KanbanPanel {
   }
 
   private async _save() {
+    // Columns with a sort rule keep that order through every change.
+    applyColumnSorts(this._board);
     const md = serializeToMarkdown(this._board);
     // Remembered so the watcher can tell our own writes from outside edits.
     this._lastSavedContent = md;
@@ -495,11 +501,34 @@ export class KanbanPanel {
 
       case 'sortColumn': {
         const col = this._board.columns.find(c => c.name === message.name);
-        if (col) {
-          col.tasks = sortColumnTasks(col.tasks, message.by);
+        const by = normalizeColumnSort(message.by);
+        if (col && by) {
+          // Once a column has a rule, choosing an order changes the rule
+          // rather than sorting just once (a one-off would be undone on save).
+          const persist = message.persist === true || col.sort !== undefined;
+          if (persist) {
+            col.sort = by;
+          } else {
+            col.tasks = sortColumnTasks(col.tasks, by);
+          }
           await this._save();
           this._sendBoardUpdate();
-          this._notify(`「${col.name}」を${sortLabel(message.by)}で並べ替えました。`);
+          this._notify(
+            persist
+              ? `「${col.name}」を常に${sortLabel(by)}で並べ替えるようにしました。`
+              : `「${col.name}」を${sortLabel(by)}で並べ替えました。`
+          );
+        }
+        break;
+      }
+
+      case 'clearColumnSort': {
+        const col = this._board.columns.find(c => c.name === message.name);
+        if (col && col.sort) {
+          delete col.sort;
+          await this._save();
+          this._sendBoardUpdate();
+          this._notify(`「${col.name}」の自動並べ替えを解除しました。現在の並びは保持されます。`);
         }
         break;
       }
@@ -721,6 +750,7 @@ const MUTATING_MESSAGE_TYPES = new Set([
   'moveColumn',
   'updateTitle',
   'sortColumn',
+  'clearColumnSort',
 ]);
 
 function cloneBoard(board: KanbanBoard): KanbanBoard {
@@ -813,6 +843,21 @@ function isCompletedColumnName(name: string, globs: string[]): boolean {
 }
 
 const PRIORITY_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+
+function normalizeColumnSort(value: unknown): ColumnSort | undefined {
+  return typeof value === 'string' && (COLUMN_SORT_VALUES as string[]).includes(value)
+    ? (value as ColumnSort)
+    : undefined;
+}
+
+/** Re-sort every column that carries a persistent sort rule. */
+function applyColumnSorts(board: KanbanBoard): void {
+  for (const column of board.columns) {
+    if (column.sort) {
+      column.tasks = sortColumnTasks(column.tasks, column.sort);
+    }
+  }
+}
 
 function sortColumnTasks(tasks: KanbanTask[], by: unknown): KanbanTask[] {
   const compare = getTaskComparator(by);

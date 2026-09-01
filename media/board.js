@@ -600,13 +600,19 @@
 
     const colActions = el('div', 'column-actions');
 
-    if (column.tasks.length > 1) {
-      const sortBtn = el('button');
+    // Always available so a rule can be set before cards arrive. A column
+    // with a persistent rule shows the rule name so the order is explained.
+    const sortBtn = el('button');
+    if (column.sort) {
+      sortBtn.textContent = '⇅ ' + (SORT_LABELS[column.sort] || column.sort);
+      sortBtn.title = '自動並べ替え: ' + (SORT_LABELS[column.sort] || column.sort) + '(クリックで変更・解除)';
+      sortBtn.style.cssText = 'opacity:1;color:var(--accent);font-size:11px;white-space:nowrap;';
+    } else {
       sortBtn.textContent = '⇅';
       sortBtn.title = 'この列を並べ替え';
-      sortBtn.onclick = () => openSortModal(column.name);
-      colActions.appendChild(sortBtn);
     }
+    sortBtn.onclick = () => openSortModal(column.name);
+    colActions.appendChild(sortBtn);
 
     const delColBtn = el('button');
     delColBtn.textContent = '✕';
@@ -1551,7 +1557,16 @@
     return REPEAT_LABELS[value] || value;
   }
 
+  const SORT_LABELS = {
+    due: '期限順',
+    priority: '優先度順',
+    title: 'タイトル順',
+  };
+
   function openSortModal(columnName) {
+    const column = board.columns.find(c => c.name === columnName);
+    const currentSort = column ? column.sort : undefined;
+
     const overlay = el('div', 'modal-overlay');
     const modal = el('div', 'modal confirm-modal');
 
@@ -1560,25 +1575,59 @@
     modal.appendChild(title);
 
     const message = el('div', 'confirm-message');
-    message.textContent = '「' + columnName + '」のカードを並べ替えます。グループ内での並びが対象です。';
+    message.textContent = currentSort
+      ? '「' + columnName + '」は現在「' + SORT_LABELS[currentSort] + '」で自動並べ替え中です。順序を選ぶと変更、下のボタンで解除できます。'
+      : '「' + columnName + '」のカードを並べ替えます。グループ内での並びが対象です。';
     modal.appendChild(message);
+
+    // Without a rule yet, let the user choose between a one-off sort and a
+    // rule that keeps the order after every change (the default).
+    let persistCheckbox = null;
+    if (!currentSort) {
+      const persistRow = el('label', 'remember-row');
+      persistCheckbox = document.createElement('input');
+      persistCheckbox.type = 'checkbox';
+      persistCheckbox.checked = true;
+      persistRow.appendChild(persistCheckbox);
+      const persistText = el('span');
+      persistText.textContent = '常にこの順序を保つ(カードを追加・編集しても自動で並べ替え)';
+      persistRow.appendChild(persistText);
+      modal.appendChild(persistRow);
+    }
 
     const options = el('div');
     options.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-bottom:14px;';
     [['due', '期限順(期限なしは最後)'], ['priority', '優先度順'], ['title', 'タイトル順']].forEach(([by, label]) => {
-      const btn = el('button', 'secondary');
+      const btn = el('button', by === currentSort ? '' : 'secondary');
       btn.type = 'button';
-      btn.textContent = label;
+      btn.textContent = label + (by === currentSort ? '(現在)' : '');
       btn.style.textAlign = 'left';
       btn.onclick = () => {
         overlay.remove();
-        vscode.postMessage({ type: 'sortColumn', name: columnName, by });
+        vscode.postMessage({
+          type: 'sortColumn',
+          name: columnName,
+          by,
+          persist: persistCheckbox ? persistCheckbox.checked : true,
+        });
       };
       options.appendChild(btn);
     });
     modal.appendChild(options);
 
     const actions = el('div', 'modal-actions');
+    if (currentSort) {
+      const clearBtn = el('button', 'secondary');
+      clearBtn.type = 'button';
+      clearBtn.textContent = '自動並べ替えを解除';
+      clearBtn.title = '現在の並びはそのまま残し、以後は手動で並べ替えます';
+      clearBtn.style.marginRight = 'auto';
+      clearBtn.onclick = () => {
+        overlay.remove();
+        vscode.postMessage({ type: 'clearColumnSort', name: columnName });
+      };
+      actions.appendChild(clearBtn);
+    }
     const cancelBtn = el('button', 'secondary');
     cancelBtn.type = 'button';
     cancelBtn.textContent = 'キャンセル';
