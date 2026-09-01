@@ -130,6 +130,21 @@ test('start date round-trips and is omitted when unset', () => {
   assert.ok(!serializeToMarkdown(noStart).includes('<!-- start:'));
 });
 
+test('column sort rule round-trips and unknown values are ignored', () => {
+  const md = '# B\n\n## 未着手\n<!-- sort: due -->\n\n#### T\n<!-- id: t1 -->\n\n## 完了\n<!-- sort: bogus -->\n\n#### U\n<!-- id: t2 -->\n';
+  const board = parseMarkdown(md);
+  assert.equal(board.columns[0].sort, 'due');
+  assert.equal(board.columns[1].sort, undefined);
+  // The metadata line must not leak into a task or the column's content.
+  assert.equal(board.columns[0].tasks.length, 1);
+  assert.equal(board.columns[0].tasks[0].description, '');
+
+  const out = serializeToMarkdown(board);
+  assert.ok(out.includes('## 未着手\n<!-- sort: due -->'));
+  assert.ok(!out.includes('<!-- sort: bogus -->'));
+  assert.equal(parseMarkdown(out).columns[0].sort, 'due');
+});
+
 test('unknown repeat values are ignored', () => {
   const board = parseMarkdown('# B\n\n## C\n\n#### T\n<!-- id: t1 -->\n<!-- repeat: hourly -->\n');
   assert.equal(board.columns[0].tasks[0].repeat, undefined);

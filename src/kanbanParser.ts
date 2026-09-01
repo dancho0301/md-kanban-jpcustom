@@ -29,9 +29,15 @@ export interface KanbanTask {
   archivedFrom?: string;
 }
 
+export type ColumnSort = 'due' | 'priority' | 'title';
+
+export const COLUMN_SORT_VALUES: ColumnSort[] = ['due', 'priority', 'title'];
+
 export interface KanbanColumn {
   name: string;
   tasks: KanbanTask[];
+  /** When set, the column is re-sorted by this key on every save. */
+  sort?: ColumnSort;
 }
 
 export interface KanbanBoard {
@@ -171,6 +177,19 @@ export function parseMarkdown(content: string): KanbanBoard {
       continue;
     }
 
+    // Column metadata sits between the column heading and its first task.
+    if (currentColumn && !currentTask) {
+      const columnMeta = line.match(/^<!--\s*(\w+):\s*(.*?)\s*-->$/);
+      if (columnMeta) {
+        const key = columnMeta[1].toLowerCase();
+        const val = columnMeta[2].trim();
+        if (key === 'sort' && (COLUMN_SORT_VALUES as string[]).includes(val)) {
+          currentColumn.sort = val as ColumnSort;
+        }
+        continue;
+      }
+    }
+
     if (currentTask) {
       // Metadata lines: <!-- key: value -->
       const metaMatch = line.match(/^<!--\s*(\w+):\s*(.*?)\s*-->$/);
@@ -299,6 +318,9 @@ export function serializeToMarkdown(board: KanbanBoard): string {
 
   for (const column of board.columns) {
     lines.push(`## ${column.name}`);
+    if (column.sort) {
+      lines.push(`<!-- sort: ${column.sort} -->`);
+    }
     lines.push('');
 
     let currentMarkdownGroup = '';
