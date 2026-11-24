@@ -1464,12 +1464,7 @@
     }
 
     if (!task.detailsFile && boardConfig.isArchiveBoard !== true) {
-      const createDetailsBtn = el('button', 'secondary');
-      createDetailsBtn.textContent = '📝 詳細ファイルを作成';
-      createDetailsBtn.onclick = () => {
-        vscode.postMessage({ type: 'createTaskDetailsFile', taskId: task.id });
-      };
-      actions.appendChild(createDetailsBtn);
+      actions.appendChild(createDetailsFileButton(task.id));
     }
 
     if (boardConfig.canArchiveCards !== false) {
@@ -2007,14 +2002,8 @@
       modal.appendChild(detailsRow);
     } else if (existingTask && boardConfig.isArchiveBoard !== true) {
       // Older tasks created before this feature existed can adopt it on demand.
-      const createBtn = el('button', 'secondary');
-      createBtn.type = 'button';
-      createBtn.textContent = '📝 詳細ファイルを作成';
-      createBtn.title = 'このタスク専用のMarkdownファイルを作成して開く';
+      const createBtn = createDetailsFileButton(existingTask.id);
       createBtn.style.cssText = 'margin-bottom:12px;padding:3px 10px;font-size:11px;';
-      createBtn.onclick = () => {
-        vscode.postMessage({ type: 'createTaskDetailsFile', taskId: existingTask.id });
-      };
       modal.appendChild(createBtn);
     } else if (!existingTask && boardConfig.isArchiveBoard !== true) {
       const hint = el('div');
@@ -2611,6 +2600,39 @@
     }
   }
 
+  // Modals render from the task as it was when opened, so a button that
+  // creates the details file is tagged with its task id and swapped for an
+  // "open" link once the board update carrying the new file arrives.
+  function createDetailsFileButton(taskId) {
+    const btn = el('button', 'secondary');
+    btn.type = 'button';
+    btn.textContent = '📝 詳細ファイルを作成';
+    btn.title = 'このタスク専用のMarkdownファイルを作成して開く';
+    btn.dataset.detailsFor = taskId;
+    btn.onclick = () => {
+      btn.disabled = true;
+      btn.textContent = '📝 作成中...';
+      vscode.postMessage({ type: 'createTaskDetailsFile', taskId });
+    };
+    return btn;
+  }
+
+  function refreshDetailsFileButtons() {
+    document.querySelectorAll('.modal-overlay [data-details-for]').forEach(btn => {
+      const found = findTaskWithColumn(btn.dataset.detailsFor);
+      if (found && found.task.detailsFile) {
+        const row = el('span');
+        row.appendChild(document.createTextNode('📝 '));
+        row.appendChild(createLink('詳細ファイルを開く', found.task.detailsFile));
+        btn.replaceWith(row);
+      } else if (btn.disabled) {
+        // Creation was refused or failed; let the user try again.
+        btn.disabled = false;
+        btn.textContent = '📝 詳細ファイルを作成';
+      }
+    });
+  }
+
   function createLink(label, target) {
     const isWebLink = /^https?:\/\//i.test(target);
     const link = document.createElement('a');
@@ -2654,12 +2676,14 @@
       board = msg.board;
       if (typeof msg.canUndo === 'boolean') canUndo = msg.canUndo;
       render();
+      refreshDetailsFileButtons();
     } else if (msg.type === 'openTaskDetails') {
       openTaskDetailsById(msg.taskId);
     } else if (msg.type === 'archiveResult') {
       showNotice(msg.message || (msg.ok ? 'カードをアーカイブしました。' : 'カードをアーカイブできませんでした。'), msg.ok);
     } else if (msg.type === 'notice') {
       showNotice(msg.message, msg.ok !== false);
+      refreshDetailsFileButtons();
     }
   });
 

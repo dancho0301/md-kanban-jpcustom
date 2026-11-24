@@ -37,6 +37,7 @@ export class KanbanPanel {
   private _undoStack: UndoEntry[] = [];
   private _lastSavedContent?: string;
   private _rendered = false;
+  private readonly _creatingDetailsFor = new Set<string>();
   private _disposables: vscode.Disposable[] = [];
 
   public static createOrShow(fileUri: vscode.Uri, extensionUri: vscode.Uri, taskId?: string) {
@@ -253,8 +254,9 @@ export class KanbanPanel {
       }
 
       case 'createTaskDetailsFile': {
+        // Paths that change nothing leave the board as is, so the generic
+        // no-op check after this switch discards their undo snapshot.
         if (isArchiveBoardFile(this._fileUri)) {
-          this._undoStack.pop();
           this._notify('アーカイブボード内のカードには詳細ファイルを作成できません。', false);
           break;
         }
@@ -265,13 +267,17 @@ export class KanbanPanel {
           if (target) break;
         }
 
-        if (!target) {
-          // Nothing to undo if the task vanished.
-          this._undoStack.pop();
-        } else if (target.detailsFile) {
-          this._undoStack.pop();
+        if (!target || this._creatingDetailsFor.has(target.id)) {
+          // Missing task, or a repeated click while the first is in flight.
+          break;
+        }
+        if (target.detailsFile) {
           this._notify('このタスクには既に詳細ファイルがあります。', false);
-        } else {
+          break;
+        }
+
+        this._creatingDetailsFor.add(target.id);
+        try {
           const detailsFile = await this._createTaskDetailsFile(target.id, target.title);
           if (detailsFile) {
             target.detailsFile = detailsFile;
@@ -279,9 +285,9 @@ export class KanbanPanel {
             this._sendBoardUpdate();
             this._notify('詳細ファイルを作成しました。');
             await openLinkedFile(detailsFile, this._fileUri);
-          } else {
-            this._undoStack.pop();
           }
+        } finally {
+          this._creatingDetailsFor.delete(target.id);
         }
         break;
       }
@@ -613,13 +619,20 @@ export class KanbanPanel {
     const folderUri = getSiblingUri(this._fileUri, folderName);
     const relativePath = `${folderName}/${taskId}.md`;
     const heading = typeof title === 'string' && title.trim() ? title.trim() : '無題のタスク';
+    const fileUri = vscode.Uri.joinPath(folderUri, `${taskId}.md`);
+
+    // The file can already exist, e.g. after undoing a link or deleting the
+    // details comment by hand. Reuse it so the user's notes are never lost.
+    try {
+      await vscode.workspace.fs.stat(fileUri);
+      return relativePath;
+    } catch {
+      // Not there yet; create it below.
+    }
 
     try {
       await vscode.workspace.fs.createDirectory(folderUri);
-      await vscode.workspace.fs.writeFile(
-        vscode.Uri.joinPath(folderUri, `${taskId}.md`),
-        Buffer.from(`# ${heading}\n`, 'utf-8')
-      );
+      await vscode.workspace.fs.writeFile(fileUri, Buffer.from(`# ${heading}\n`, 'utf-8'));
       return relativePath;
     } catch (error) {
       this._notify(`詳細ファイルを作成できませんでした: ${getErrorMessage(error)}`, false);
