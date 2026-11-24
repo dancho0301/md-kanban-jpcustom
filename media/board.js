@@ -1259,6 +1259,14 @@
       card.appendChild(sourceEl);
     }
 
+    // Details file: a per-task Markdown file for notes that grow over time.
+    if (task.detailsFile) {
+      const detailsEl = el('div', 'card-source');
+      detailsEl.textContent = '📝 ';
+      detailsEl.appendChild(createLink('詳細ファイルを開く', task.detailsFile));
+      card.appendChild(detailsEl);
+    }
+
     // Subtasks: progress toggles an inline checklist that can be ticked here.
     if (task.subtasks && task.subtasks.length > 0) {
       const doneCount = task.subtasks.filter(s => s.done).length;
@@ -1401,6 +1409,14 @@
     appendDetail(modal, '詳細', metaValues.join('\n'));
 
     appendDetail(modal, '説明', task.description || '', '説明はありません', true);
+
+    if (task.detailsFile) {
+      const section = detailSection('詳細ファイル');
+      const text = el('div', 'detail-text');
+      text.appendChild(createLink(task.detailsFile, task.detailsFile));
+      section.appendChild(text);
+      modal.appendChild(section);
+    }
 
     if (task.tags && task.tags.length > 0) {
       const section = detailSection('タグ');
@@ -1971,6 +1987,21 @@
     const heading = el('h2');
     heading.textContent = existingTask ? 'タスクを編集' : 'タスクを追加';
     modal.appendChild(heading);
+
+    // The details file holds freeform notes that grow over time; it is
+    // auto-created on save and opened in the editor, not edited inline here.
+    if (existingTask && existingTask.detailsFile) {
+      const detailsRow = el('div');
+      detailsRow.style.cssText = 'margin-bottom:12px;font-size:12px;';
+      detailsRow.appendChild(document.createTextNode('📝 '));
+      detailsRow.appendChild(createLink('詳細ファイルを開く', existingTask.detailsFile));
+      modal.appendChild(detailsRow);
+    } else if (!existingTask) {
+      const hint = el('div');
+      hint.textContent = '📝 保存すると詳細ファイル(Markdown)が自動的に作成されます。';
+      hint.style.cssText = 'margin-bottom:12px;font-size:11px;opacity:0.65;';
+      modal.appendChild(hint);
+    }
 
     let templateSelect = null;
     if (!existingTask) {

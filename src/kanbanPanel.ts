@@ -186,8 +186,10 @@ export class KanbanPanel {
       case 'addTask': {
         const col = this._board.columns.find(c => c.name === message.column);
         if (col) {
+          const id = generateId();
+          const detailsFile = await this._createTaskDetailsFile(id, message.title);
           col.tasks.push({
-            id: generateId(),
+            id,
             title: message.title,
             description: message.description || '',
             tags: message.tags || [],
@@ -201,6 +203,7 @@ export class KanbanPanel {
             source: message.source || '',
             group: message.group || '',
             repeat: normalizeRepeat(message.repeat),
+            detailsFile,
           });
           await this._save();
           this._sendBoardUpdate();
@@ -558,6 +561,35 @@ export class KanbanPanel {
       if (entry && !entry.cleanup && JSON.stringify(entry.board) === JSON.stringify(this._board)) {
         this._undoStack.pop();
       }
+    }
+  }
+
+  /**
+   * Create a dedicated Markdown file for a new task's ongoing notes, in a
+   * folder named after the board file (e.g. `project.tasks/<id>.md` beside
+   * `project.kanban.md`). Returns the path to store on the task (relative to
+   * the board file), or undefined if the file could not be created.
+   */
+  private async _createTaskDetailsFile(taskId: string, title: unknown): Promise<string | undefined> {
+    if (isArchiveBoardFile(this._fileUri)) {
+      return undefined;
+    }
+
+    const folderName = getTaskDetailsFolderName(getFileName(this._fileUri));
+    const folderUri = getSiblingUri(this._fileUri, folderName);
+    const relativePath = `${folderName}/${taskId}.md`;
+    const heading = typeof title === 'string' && title.trim() ? title.trim() : '無題のタスク';
+
+    try {
+      await vscode.workspace.fs.createDirectory(folderUri);
+      await vscode.workspace.fs.writeFile(
+        vscode.Uri.joinPath(folderUri, `${taskId}.md`),
+        Buffer.from(`# ${heading}\n`, 'utf-8')
+      );
+      return relativePath;
+    } catch (error) {
+      this._notify(`詳細ファイルを作成できませんでした: ${getErrorMessage(error)}`, false);
+      return undefined;
     }
   }
 
@@ -919,6 +951,18 @@ function sortLabel(by: unknown): string {
 function getSiblingUri(uri: vscode.Uri, fileName: string): vscode.Uri {
   const parentPath = uri.path.replace(/\/[^/]*$/, '');
   return uri.with({ path: `${parentPath}/${fileName}` });
+}
+
+function getFileName(uri: vscode.Uri): string {
+  return uri.path.split('/').pop() || 'kanban.md';
+}
+
+/** `project.kanban.md` -> `project.tasks`; `kanban.md` / `.kanban.md` -> `kanban.tasks` / `.kanban.tasks`. */
+function getTaskDetailsFolderName(boardFileName: string): string {
+  if (/^\.?kanban\.md$/i.test(boardFileName)) {
+    return boardFileName.startsWith('.') ? '.kanban.tasks' : 'kanban.tasks';
+  }
+  return boardFileName.replace(/\.kanban\.md$/i, '.tasks');
 }
 
 /** Remove a task by id from another board file (used to undo archive/restore). */
