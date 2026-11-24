@@ -12,7 +12,16 @@ import {
   REPEAT_VALUES,
   generateId,
 } from './kanbanParser';
+import {
+  buildDetailsFileContent,
+  makeDetailsPreview,
+  relativePath,
+  stripCopySuffix,
+  toNoteFileBaseName,
+} from './detailsFiles';
 import { openLinkedFile, openTaskSource } from './source';
+
+const DETAILS_PREVIEW_CHARS = 300;
 import { getWebviewContent } from './webviewContent';
 
 /**
@@ -22,6 +31,13 @@ import { getWebviewContent } from './webviewContent';
 interface UndoEntry {
   board: KanbanBoard;
   cleanup?: { uri: vscode.Uri; taskIds: string[] };
+  /** Details files renamed/moved by the change, moved back on undo. */
+  fileMoves?: FileMove[];
+}
+
+interface FileMove {
+  from: vscode.Uri;
+  to: vscode.Uri;
 }
 
 /** What the webview shows about a task's details file without opening it. */
@@ -33,11 +49,11 @@ interface DetailsInfo {
 }
 
 const MAX_UNDO_STEPS = 50;
-const DETAILS_PREVIEW_CHARS = 300;
 
 export class KanbanPanel {
   public static readonly viewType = 'mdKanbanJp.boardView';
   private static panels: Map<string, KanbanPanel> = new Map();
+  private static lastActive?: KanbanPanel;
 
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
@@ -86,6 +102,12 @@ export class KanbanPanel {
     this._board = { title: '', columns: [] };
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    KanbanPanel.lastActive = this;
+    this._panel.onDidChangeViewState(event => {
+      if (event.webviewPanel.active) {
+        KanbanPanel.lastActive = this;
+      }
+    }, null, this._disposables);
 
     this._panel.webview.onDidReceiveMessage(
       (message) => this._handleMessage(message),
@@ -118,6 +140,17 @@ export class KanbanPanel {
       detailsWatcher.onDidCreate(schedule);
       detailsWatcher.onDidDelete(schedule);
       this._disposables.push(detailsWatcher);
+
+      const completedFolder = getCompletedDetailsFolderUri(fileUri);
+      if (completedFolder) {
+        const completedWatcher = vscode.workspace.createFileSystemWatcher(
+          new vscode.RelativePattern(completedFolder, '*.md')
+        );
+        completedWatcher.onDidChange(schedule);
+        completedWatcher.onDidCreate(schedule);
+        completedWatcher.onDidDelete(schedule);
+        this._disposables.push(completedWatcher);
+      }
     }
 
     this._loadAndRefresh();
@@ -216,7 +249,7 @@ export class KanbanPanel {
         const col = this._board.columns.find(c => c.name === message.column);
         if (col) {
           const id = generateId();
-          const detailsFile = await this._createTaskDetailsFile(id, message.title);
+          const detailsFile = await this._createTaskDetailsFile(id, message.title, message.tags);
           col.tasks.push({
             id,
             title: message.title,
@@ -247,6 +280,7 @@ export class KanbanPanel {
         for (const col of this._board.columns) {
           const task = col.tasks.find(t => t.id === message.taskId);
           if (task) {
+            const previousTitle = task.title;
             task.title = message.title;
             task.description = message.description || '';
             task.tags = message.tags || [];
@@ -259,6 +293,13 @@ export class KanbanPanel {
             task.source = message.source || '';
             task.group = message.group || '';
             task.repeat = normalizeRepeat(message.repeat);
+            if (task.detailsFile && previousTitle !== task.title) {
+              // Keep the notes file named after the task (Foam-style notes).
+              const move = await this._renameDetailsFileForTitle(task, previousTitle);
+              if (move) {
+                this._recordFileMoves([move]);
+              }
+            }
             await this._save();
             this._sendBoardUpdate();
             break;
@@ -309,7 +350,7 @@ export class KanbanPanel {
 
         this._creatingDetailsFor.add(target.id);
         try {
-          const detailsFile = await this._createTaskDetailsFile(target.id, target.title);
+          const detailsFile = await this._createTaskDetailsFile(target.id, target.title, target.tags);
           if (detailsFile) {
             target.detailsFile = detailsFile;
             await this._save();
@@ -356,6 +397,7 @@ export class KanbanPanel {
           break;
         }
         let moved = 0;
+        const completedTasks: KanbanTask[] = [];
         for (const id of ids) {
           const fromCol = this._board.columns.find(c => c.tasks.some(t => t.id === id));
           if (!fromCol || fromCol === toCol) {
@@ -366,9 +408,14 @@ export class KanbanPanel {
           const previousGroup = task.group;
           task.group = '';
           toCol.tasks.push(task);
-          updateDoneDate(task, fromCol, toCol);
+          if (updateDoneDate(task, fromCol, toCol)) {
+            completedTasks.push(task);
+          }
           this._spawnRepeatOccurrence(task, fromCol, toCol, taskIdx, previousGroup);
           moved++;
+        }
+        if (completedTasks.length > 0) {
+          await this._fileCompletedDetails(completedTasks);
         }
         if (moved > 0) {
           await this._save();
@@ -444,8 +491,11 @@ export class KanbanPanel {
               insertIdx--;
             }
             toCol.tasks.splice(insertIdx, 0, task);
-            updateDoneDate(task, fromCol, toCol);
+            const completed = updateDoneDate(task, fromCol, toCol);
             this._spawnRepeatOccurrence(task, fromCol, toCol, taskIdx);
+            if (completed) {
+              await this._fileCompletedDetails([task]);
+            }
             await this._save();
             this._sendBoardUpdate();
           }
@@ -467,8 +517,11 @@ export class KanbanPanel {
             task.group = message.group ?? '';
             let insertIdx = this._getMoveInsertIndex(toCol, message, targetLength);
             toCol.tasks.splice(insertIdx, 0, task);
-            updateDoneDate(task, fromCol, toCol);
+            const completed = updateDoneDate(task, fromCol, toCol);
             this._spawnRepeatOccurrence(task, fromCol, toCol, taskIdx, previousGroup);
+            if (completed) {
+              await this._fileCompletedDetails([task]);
+            }
             await this._save();
             this._sendBoardUpdate();
           }
@@ -707,6 +760,9 @@ export class KanbanPanel {
         }
 
         this._board = entry.board;
+        if (entry.fileMoves) {
+          await this._revertFileMoves(entry.fileMoves);
+        }
         await this._save();
         if (entry.cleanup) {
           await removeTasksFromBoardFile(entry.cleanup.uri, entry.cleanup.taskIds);
@@ -721,7 +777,7 @@ export class KanbanPanel {
     // A message that changed nothing should not leave an undo step behind.
     if (isMutating) {
       const entry = this._undoStack[this._undoStack.length - 1];
-      if (entry && !entry.cleanup && JSON.stringify(entry.board) === JSON.stringify(this._board)) {
+      if (entry && !entry.cleanup && !entry.fileMoves && JSON.stringify(entry.board) === JSON.stringify(this._board)) {
         this._undoStack.pop();
       }
     }
@@ -733,34 +789,223 @@ export class KanbanPanel {
    * `project.kanban.md`). Returns the path to store on the task (relative to
    * the board file), or undefined if the file could not be created.
    */
-  private async _createTaskDetailsFile(taskId: string, title: unknown): Promise<string | undefined> {
+  private async _createTaskDetailsFile(taskId: string, title: unknown, tags?: unknown): Promise<string | undefined> {
     if (isArchiveBoardFile(this._fileUri)) {
       return undefined;
     }
 
     const folderName = getTaskDetailsFolderName(getFileName(this._fileUri));
     const folderUri = getSiblingUri(this._fileUri, folderName);
-    const relativePath = `${folderName}/${taskId}.md`;
     const heading = typeof title === 'string' && title.trim() ? title.trim() : '無題のタスク';
-    const fileUri = vscode.Uri.joinPath(folderUri, `${taskId}.md`);
-
-    // The file can already exist, e.g. after undoing a link or deleting the
-    // details comment by hand. Reuse it so the user's notes are never lost.
-    try {
-      await vscode.workspace.fs.stat(fileUri);
-      return relativePath;
-    } catch {
-      // Not there yet; create it below.
-    }
 
     try {
       await vscode.workspace.fs.createDirectory(folderUri);
-      await vscode.workspace.fs.writeFile(fileUri, Buffer.from(`# ${heading}\n`, 'utf-8'));
-      return relativePath;
+      // Named after the task like a Foam note. An existing file is never
+      // overwritten; a free "Name (2).md"-style name is used instead.
+      const fileUri = await findFreeFileUri(folderUri, toNoteFileBaseName(heading));
+      const content = buildDetailsFileContent({
+        heading,
+        tags,
+        boardFileName: getFileName(this._fileUri),
+        created: toDateIso(startOfToday()),
+        frontmatter: vscode.workspace.getConfiguration('mdKanbanJp').get<boolean>('detailsFrontmatter', true) !== false,
+      });
+      await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf-8'));
+      return relativePathFrom(getParentUri(this._fileUri), fileUri);
     } catch (error) {
       this._notify(`詳細ファイルを作成できませんでした: ${getErrorMessage(error)}`, false);
       return undefined;
     }
+  }
+
+  /**
+   * Rename a details file after its task's title changed. Only files still
+   * named after the old title (or the old task-id scheme) follow, so names the
+   * user chose by hand are left alone. Done through a workspace edit so
+   * extensions such as Foam can update links to the file.
+   */
+  private async _renameDetailsFileForTitle(task: KanbanTask, previousTitle: string): Promise<FileMove | undefined> {
+    const from = this._resolveDetailsUri(task.detailsFile);
+    if (!from) {
+      return undefined;
+    }
+    const currentBase = getFileName(from).replace(/\.md$/i, '');
+    const followsTitle =
+      currentBase === task.id ||
+      stripCopySuffix(currentBase) === toNoteFileBaseName(previousTitle || '無題のタスク');
+    if (!followsTitle) {
+      return undefined;
+    }
+    const move = await this._moveDetailsFile(task, from, getParentUri(from), toNoteFileBaseName(task.title));
+    if (move === null) {
+      this._notify('詳細ファイルの名前を変更できませんでした。', false);
+    }
+    return move ?? undefined;
+  }
+
+  /** Move finished tasks' notes into the configured knowledge folder. */
+  private async _fileCompletedDetails(tasks: KanbanTask[]): Promise<void> {
+    const targetFolder = getCompletedDetailsFolderUri(this._fileUri);
+    if (!targetFolder || isArchiveBoardFile(this._fileUri)) {
+      return;
+    }
+    const moves: FileMove[] = [];
+    let failed = 0;
+    for (const task of tasks) {
+      const from = this._resolveDetailsUri(task.detailsFile);
+      if (!from || getParentUri(from).path === targetFolder.path) {
+        continue;
+      }
+      const move = await this._moveDetailsFile(task, from, targetFolder, getFileName(from).replace(/\.md$/i, ''));
+      if (move) {
+        moves.push(move);
+      } else if (move === null) {
+        failed++;
+      }
+    }
+    if (moves.length > 0) {
+      this._recordFileMoves(moves);
+      this._notify(`詳細ファイル${moves.length}件をナレッジフォルダ(${vscode.workspace.asRelativePath(targetFolder)})へ移動しました。`);
+    }
+    if (failed > 0) {
+      this._notify(`詳細ファイル${failed}件をナレッジフォルダへ移動できませんでした。`, false);
+    }
+  }
+
+  /**
+   * Move/rename one details file and point the task at its new path.
+   * Returns undefined when there is nothing to do and null on failure.
+   */
+  private async _moveDetailsFile(
+    task: KanbanTask,
+    from: vscode.Uri,
+    targetFolder: vscode.Uri,
+    baseName: string
+  ): Promise<FileMove | null | undefined> {
+    try {
+      await vscode.workspace.fs.stat(from);
+    } catch {
+      return undefined;
+    }
+    try {
+      await vscode.workspace.fs.createDirectory(targetFolder);
+      const to = await findFreeFileUri(targetFolder, baseName, from);
+      if (to.path === from.path) {
+        return undefined;
+      }
+      const edit = new vscode.WorkspaceEdit();
+      edit.renameFile(from, to, { overwrite: false });
+      if (!(await vscode.workspace.applyEdit(edit))) {
+        return null;
+      }
+      // Other cards can share the file (e.g. a repeating task's next
+      // occurrence); keep all of their links pointing at it.
+      const oldPath = task.detailsFile;
+      const newPath = relativePathFrom(getParentUri(this._fileUri), to);
+      for (const other of this._board.columns.flatMap(column => column.tasks)) {
+        if (other === task || (oldPath && other.detailsFile === oldPath)) {
+          other.detailsFile = newPath;
+        }
+      }
+      return { from, to };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Attach file moves to the undo step of the change in progress. */
+  private _recordFileMoves(moves: FileMove[]) {
+    const entry = this._undoStack[this._undoStack.length - 1];
+    if (entry) {
+      entry.fileMoves = [...(entry.fileMoves ?? []), ...moves];
+    }
+  }
+
+  private async _revertFileMoves(moves: FileMove[]): Promise<void> {
+    let failed = 0;
+    for (const move of [...moves].reverse()) {
+      try {
+        await vscode.workspace.fs.stat(move.to);
+      } catch {
+        continue;
+      }
+      try {
+        await vscode.workspace.fs.stat(move.from);
+        failed++;
+        continue;
+      } catch {
+        // Original location is free; move it back.
+      }
+      const edit = new vscode.WorkspaceEdit();
+      edit.renameFile(move.to, move.from, { overwrite: false });
+      if (!(await vscode.workspace.applyEdit(edit).then(ok => ok, () => false))) {
+        failed++;
+      }
+    }
+    if (failed > 0) {
+      this._notify(`詳細ファイル${failed}件を元の場所に戻せませんでした。`, false);
+    }
+  }
+
+  /** Command: rename every details file of the most recently active board to its task title. */
+  public static async renameDetailsFilesOfActiveBoard(): Promise<void> {
+    const panel = KanbanPanel.lastActive;
+    if (!panel || !KanbanPanel.panels.has(panel._fileUri.toString())) {
+      vscode.window.showInformationMessage('先にカンバンボードを開いてから実行してください。');
+      return;
+    }
+    await panel._renameAllDetailsFiles();
+  }
+
+  private async _renameAllDetailsFiles(): Promise<void> {
+    if (isArchiveBoardFile(this._fileUri)) {
+      vscode.window.showInformationMessage('アーカイブボードでは実行できません。');
+      return;
+    }
+    const candidates = this._board.columns
+      .flatMap(column => column.tasks)
+      .filter(task => {
+        const uri = this._resolveDetailsUri(task.detailsFile);
+        return !!uri && stripCopySuffix(getFileName(uri).replace(/\.md$/i, '')) !== toNoteFileBaseName(task.title);
+      });
+    if (candidates.length === 0) {
+      vscode.window.showInformationMessage('名前を変える必要のある詳細ファイルはありません。');
+      return;
+    }
+    const answer = await vscode.window.showInformationMessage(
+      `「${this._board.title}」の詳細ファイル${candidates.length}件を、タスク名に合わせた名前に変更しますか?`,
+      { modal: true, detail: '元に戻す(Ctrl+Z)で元の名前に戻せます。' },
+      '変更する'
+    );
+    if (answer !== '変更する') {
+      return;
+    }
+
+    this._pushUndo();
+    const moves: FileMove[] = [];
+    let failed = 0;
+    for (const task of candidates) {
+      const from = this._resolveDetailsUri(task.detailsFile)!;
+      const move = await this._moveDetailsFile(task, from, getParentUri(from), toNoteFileBaseName(task.title));
+      if (move) {
+        moves.push(move);
+      } else if (move === null) {
+        failed++;
+      }
+    }
+    if (moves.length === 0) {
+      this._undoStack.pop();
+    } else {
+      this._recordFileMoves(moves);
+      await this._save();
+      this._sendBoardUpdate();
+    }
+    this._notify(
+      failed > 0
+        ? `${moves.length}件の名前を変更しました(${failed}件は失敗)。`
+        : `${moves.length}件の詳細ファイルの名前をタスク名に合わせました。`,
+      failed === 0
+    );
   }
 
   /** Move a card in archive.kanban.md back to the board it came from. */
@@ -914,8 +1159,7 @@ export class KanbanPanel {
     if (!relativePath || /^[a-z][a-z0-9+.-]*:/i.test(relativePath) || relativePath.startsWith('/')) {
       return undefined;
     }
-    const boardDir = this._fileUri.with({ path: this._fileUri.path.replace(/\/[^/]*$/, '') || '/' });
-    return vscode.Uri.joinPath(boardDir, relativePath.replace(/:\d+$/, ''));
+    return vscode.Uri.joinPath(getParentUri(this._fileUri), relativePath.replace(/:\d+$/, ''));
   }
 
   /** Read a short preview and the modification time of each linked details file. */
@@ -931,7 +1175,7 @@ export class KanbanPanel {
         const stat = await vscode.workspace.fs.stat(uri);
         const data = await vscode.workspace.fs.readFile(uri);
         info[task.id] = {
-          preview: makeDetailsPreview(Buffer.from(data).toString('utf-8')),
+          preview: makeDetailsPreview(Buffer.from(data).toString('utf-8'), DETAILS_PREVIEW_CHARS),
           mtime: stat.mtime,
         };
       } catch {
@@ -994,7 +1238,7 @@ export class KanbanPanel {
         detailsFile: undefined,
       };
       if (original.detailsFile) {
-        copy.detailsFile = await this._createTaskDetailsFile(id, title);
+        copy.detailsFile = await this._createTaskDetailsFile(id, title, copy.tags);
       }
       col.tasks.splice(idx + 1, 0, copy);
       await this._save();
@@ -1138,27 +1382,56 @@ function toIdList(value: unknown): string[] {
  * Record when a card reaches a completed-style column and forget it when the
  * card moves back. Moves between completed columns (and restores) keep the date.
  */
-function updateDoneDate(task: KanbanTask, fromColumn: KanbanColumn | undefined, toColumn: KanbanColumn): void {
+function updateDoneDate(task: KanbanTask, fromColumn: KanbanColumn | undefined, toColumn: KanbanColumn): boolean {
   const globs = getCompletedColumnGlobs();
   if (!isCompletedColumnName(toColumn.name, globs)) {
     delete task.doneDate;
   } else if (fromColumn && !isCompletedColumnName(fromColumn.name, globs)) {
     task.doneDate = toDateIso(startOfToday());
+    return true;
   }
+  return false;
 }
 
-/** Body text of a details file below its first heading, shortened for a tooltip. */
-function makeDetailsPreview(content: string): string {
-  const lines = content.replace(/\r\n?/g, '\n').split('\n');
-  let start = 0;
-  while (start < lines.length && !lines[start].trim()) {
-    start++;
+function getParentUri(uri: vscode.Uri): vscode.Uri {
+  return uri.with({ path: uri.path.replace(/\/[^/]*$/, '') || '/' });
+}
+
+/** Workspace-relative knowledge folder from `mdKanbanJp.completedDetailsFolder`, if set. */
+function getCompletedDetailsFolderUri(boardUri: vscode.Uri): vscode.Uri | undefined {
+  const value = vscode.workspace.getConfiguration('mdKanbanJp').get<unknown>('completedDetailsFolder');
+  const folder = typeof value === 'string' ? value.trim().replace(/^[/\\]+|[/\\]+$/g, '') : '';
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(boardUri);
+  if (!folder || !workspaceFolder) {
+    return undefined;
   }
-  if (start < lines.length && /^#\s/.test(lines[start])) {
-    start++;
+  const segments = folder.split(/[/\\]/).filter(segment => segment && segment !== '.');
+  // Stay inside the workspace.
+  if (segments.includes('..')) {
+    return undefined;
   }
-  const body = lines.slice(start).join('\n').trim();
-  return body.length > DETAILS_PREVIEW_CHARS ? `${body.slice(0, DETAILS_PREVIEW_CHARS)}…` : body;
+  return vscode.Uri.joinPath(workspaceFolder.uri, ...segments);
+}
+
+/** First unused `<base>.md`, `<base> (2).md`, ... in a folder. `self` counts as free. */
+/** Path of `target` relative to the folder `baseDir`. */
+function relativePathFrom(baseDir: vscode.Uri, target: vscode.Uri): string {
+  return relativePath(baseDir.path, target.path);
+}
+
+async function findFreeFileUri(folder: vscode.Uri, baseName: string, self?: vscode.Uri): Promise<vscode.Uri> {
+  for (let n = 1; n < 1000; n++) {
+    const candidate = vscode.Uri.joinPath(folder, n === 1 ? `${baseName}.md` : `${baseName} (${n}).md`);
+    if (self && candidate.path.toLowerCase() === self.path.toLowerCase()) {
+      return self.path === candidate.path ? self : candidate;
+    }
+    try {
+      await vscode.workspace.fs.stat(candidate);
+    } catch {
+      return candidate;
+    }
+  }
+  throw new Error('空いているファイル名が見つかりませんでした。');
 }
 
 function cloneBoard(board: KanbanBoard): KanbanBoard {

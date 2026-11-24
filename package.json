@@ -44,7 +44,8 @@
     "onCommand:md-kanban-jp.refreshTimeline",
     "onCommand:md-kanban-jp.showTimeline",
     "onCommand:md-kanban-jp.refreshCalendar",
-    "onCommand:md-kanban-jp.showCalendar"
+    "onCommand:md-kanban-jp.showCalendar",
+    "onCommand:md-kanban-jp.renameDetailsFiles"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -118,6 +119,11 @@
         "title": "カレンダーを表示",
         "category": "カンバン",
         "icon": "$(calendar)"
+      },
+      {
+        "command": "md-kanban-jp.renameDetailsFiles",
+        "title": "詳細ファイル名をタスク名に揃える",
+        "category": "カンバン"
       }
     ],
     "viewsContainers": {
@@ -225,6 +231,16 @@
             "type": "string"
           },
           "description": "期限超過のカンバンタスクをスキャンする際に、完了済みとみなす列名のグロブパターン。"
+        },
+        "mdKanbanJp.completedDetailsFolder": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "タスクを完了扱いの列へ移動したときに、詳細ファイルを移動するフォルダ(ワークスペースルートからの相対パス。例: `notes/done`)。Foam などのナレッジフォルダを指定すると、完了したタスクのメモをそのまま整理できます。空の場合は移動しません。"
+        },
+        "mdKanbanJp.detailsFrontmatter": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "新しく作成する詳細ファイルの先頭に、Foam などで使える YAML フロントマター(`tags` / `created` / `board`)を入れます。"
         }
       }
     },

@@ -490,6 +490,10 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('md-kanban-jp.renameDetailsFiles', () => KanbanPanel.renameDetailsFilesOfActiveBoard())
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('md-kanban-jp.refreshCodeTodos', () => todosProvider.refresh())
   );
 
