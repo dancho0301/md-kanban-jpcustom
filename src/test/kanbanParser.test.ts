@@ -145,6 +145,20 @@ test('column sort rule round-trips and unknown values are ignored', () => {
   assert.equal(parseMarkdown(out).columns[0].sort, 'due');
 });
 
+test('details file path round-trips and is omitted when unset', () => {
+  const board = parseMarkdown('# B\n\n## C\n\n#### T\n<!-- id: t1 -->\n<!-- details: project.tasks/t1.md -->\n');
+  const task = board.columns[0].tasks[0];
+  assert.equal(task.detailsFile, 'project.tasks/t1.md');
+
+  const md = serializeToMarkdown(board);
+  assert.ok(md.includes('<!-- details: project.tasks/t1.md -->'));
+  assert.equal(parseMarkdown(md).columns[0].tasks[0].detailsFile, 'project.tasks/t1.md');
+
+  const noDetails = parseMarkdown('# B\n\n## C\n\n#### T\n<!-- id: t2 -->\n');
+  assert.equal(noDetails.columns[0].tasks[0].detailsFile, undefined);
+  assert.ok(!serializeToMarkdown(noDetails).includes('<!-- details:'));
+});
+
 test('unknown repeat values are ignored', () => {
   const board = parseMarkdown('# B\n\n## C\n\n#### T\n<!-- id: t1 -->\n<!-- repeat: hourly -->\n');
   assert.equal(board.columns[0].tasks[0].repeat, undefined);

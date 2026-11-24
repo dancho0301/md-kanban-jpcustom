@@ -27,6 +27,8 @@ export interface KanbanTask {
   repeat?: Repeat;
   /** Column the card lived in before it was archived, used when restoring. */
   archivedFrom?: string;
+  /** Path (relative to the board file) to this task's dedicated notes file. */
+  detailsFile?: string;
 }
 
 export type ColumnSort = 'due' | 'priority' | 'title';
@@ -216,6 +218,8 @@ export function parseMarkdown(content: string): KanbanBoard {
           currentTask.repeat = val as Repeat;
         } else if (key === 'archivedfrom' && val) {
           currentTask.archivedFrom = val;
+        } else if (key === 'details' && val) {
+          currentTask.detailsFile = val;
         }
         continue;
       }
@@ -291,6 +295,9 @@ function serializeTask(lines: string[], task: KanbanTask, needsGroupOverride = f
   }
   if (task.source) {
     lines.push(`<!-- source: ${task.source} -->`);
+  }
+  if (task.detailsFile) {
+    lines.push(`<!-- details: ${task.detailsFile} -->`);
   }
   if (task.repeat) {
     lines.push(`<!-- repeat: ${task.repeat} -->`);
