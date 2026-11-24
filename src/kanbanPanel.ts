@@ -21,10 +21,19 @@ import { getWebviewContent } from './webviewContent';
  */
 interface UndoEntry {
   board: KanbanBoard;
-  cleanup?: { uri: vscode.Uri; taskId: string };
+  cleanup?: { uri: vscode.Uri; taskIds: string[] };
+}
+
+/** What the webview shows about a task's details file without opening it. */
+interface DetailsInfo {
+  /** First lines of the file below its heading ('' when nothing is written yet). */
+  preview: string;
+  /** Last modification time (ms since epoch). */
+  mtime: number;
 }
 
 const MAX_UNDO_STEPS = 50;
+const DETAILS_PREVIEW_CHARS = 300;
 
 export class KanbanPanel {
   public static readonly viewType = 'mdKanbanJp.boardView';
@@ -38,6 +47,7 @@ export class KanbanPanel {
   private _lastSavedContent?: string;
   private _rendered = false;
   private readonly _creatingDetailsFor = new Set<string>();
+  private _detailsRefreshTimer?: ReturnType<typeof setTimeout>;
   private _disposables: vscode.Disposable[] = [];
 
   public static createOrShow(fileUri: vscode.Uri, extensionUri: vscode.Uri, taskId?: string) {
@@ -95,6 +105,21 @@ export class KanbanPanel {
       this._disposables.push(watcher);
     }
 
+    // Details files are edited in normal editors; keep previews and
+    // "updated N days ago" labels current while the board is open.
+    if (!isArchiveBoardFile(fileUri)) {
+      const boardDir = fileUri.with({ path: fileUri.path.replace(/\/[^/]*$/, '') || '/' });
+      const folderName = getTaskDetailsFolderName(getFileName(fileUri));
+      const detailsWatcher = vscode.workspace.createFileSystemWatcher(
+        new vscode.RelativePattern(boardDir, `${folderName}/*.md`)
+      );
+      const schedule = () => this._scheduleDetailsInfoUpdate();
+      detailsWatcher.onDidChange(schedule);
+      detailsWatcher.onDidCreate(schedule);
+      detailsWatcher.onDidDelete(schedule);
+      this._disposables.push(detailsWatcher);
+    }
+
     this._loadAndRefresh();
   }
 
@@ -126,6 +151,7 @@ export class KanbanPanel {
       return;
     }
 
+    const detailsInfo = await this._collectDetailsInfo();
     try {
       this._panel.webview.html = getWebviewContent(
         this._panel.webview,
@@ -135,6 +161,8 @@ export class KanbanPanel {
           canArchiveCards: !isArchiveBoardFile(this._fileUri),
           isArchiveBoard: isArchiveBoardFile(this._fileUri),
           canUndo: this._undoStack.length > 0,
+          detailsInfo,
+          completedColumnGlobs: getCompletedColumnGlobs(),
         }
       );
       this._rendered = true;
@@ -160,7 +188,7 @@ export class KanbanPanel {
   private async _handleMessage(message: { type: string; [key: string]: any }) {
     // Structural fields land on single markdown lines (# / ## / ### / #### / <!-- -->);
     // strip newlines so webview input cannot inject headings into the board file.
-    for (const key of ['title', 'name', 'oldName', 'newName', 'column', 'fromColumn', 'toColumn', 'group', 'assignee', 'source', 'dueDate', 'startDate']) {
+    for (const key of ['title', 'name', 'oldName', 'newName', 'column', 'fromColumn', 'toColumn', 'group', 'assignee', 'source', 'dueDate', 'startDate', 'tag']) {
       if (typeof message[key] === 'string') {
         message[key] = toSingleLine(message[key]);
       }
@@ -205,6 +233,9 @@ export class KanbanPanel {
             group: message.group || '',
             repeat: normalizeRepeat(message.repeat),
             detailsFile,
+            doneDate: isCompletedColumnName(col.name, getCompletedColumnGlobs())
+              ? toDateIso(startOfToday())
+              : undefined,
           });
           await this._save();
           this._sendBoardUpdate();
@@ -301,12 +332,102 @@ export class KanbanPanel {
         for (const col of this._board.columns) {
           const idx = col.tasks.findIndex(t => t.id === message.taskId);
           if (idx !== -1) {
-            col.tasks.splice(idx, 1);
+            const [removed] = col.tasks.splice(idx, 1);
             await this._save();
             this._sendBoardUpdate();
+            if (message.deleteDetailsFile === true) {
+              await this._trashDetailsFiles([removed]);
+            }
             break;
           }
         }
+        break;
+      }
+
+      case 'duplicateTask': {
+        await this._duplicateTask(message.taskId);
+        break;
+      }
+
+      case 'bulkMove': {
+        const toCol = this._board.columns.find(c => c.name === message.toColumn);
+        const ids = toIdList(message.taskIds);
+        if (!toCol || ids.length === 0) {
+          break;
+        }
+        let moved = 0;
+        for (const id of ids) {
+          const fromCol = this._board.columns.find(c => c.tasks.some(t => t.id === id));
+          if (!fromCol || fromCol === toCol) {
+            continue;
+          }
+          const taskIdx = fromCol.tasks.findIndex(t => t.id === id);
+          const [task] = fromCol.tasks.splice(taskIdx, 1);
+          const previousGroup = task.group;
+          task.group = '';
+          toCol.tasks.push(task);
+          updateDoneDate(task, fromCol, toCol);
+          this._spawnRepeatOccurrence(task, fromCol, toCol, taskIdx, previousGroup);
+          moved++;
+        }
+        if (moved > 0) {
+          await this._save();
+          this._sendBoardUpdate();
+          this._notify(`${moved}件のカードを「${toCol.name}」に移動しました。`);
+        }
+        break;
+      }
+
+      case 'bulkAddTag': {
+        const tag = typeof message.tag === 'string' ? message.tag.replace(/^#/, '').trim() : '';
+        const ids = new Set(toIdList(message.taskIds));
+        if (!tag || ids.size === 0) {
+          break;
+        }
+        let changed = 0;
+        for (const col of this._board.columns) {
+          for (const task of col.tasks) {
+            if (ids.has(task.id) && !task.tags.includes(tag)) {
+              task.tags.push(tag);
+              changed++;
+            }
+          }
+        }
+        if (changed > 0) {
+          await this._save();
+          this._sendBoardUpdate();
+          this._notify(`${changed}件のカードにタグ「${tag}」を追加しました。`);
+        } else {
+          this._notify(`選択したカードにはすでにタグ「${tag}」が付いています。`);
+        }
+        break;
+      }
+
+      case 'bulkDelete': {
+        const ids = new Set(toIdList(message.taskIds));
+        const removed: KanbanTask[] = [];
+        for (const col of this._board.columns) {
+          col.tasks = col.tasks.filter(task => {
+            if (ids.has(task.id)) {
+              removed.push(task);
+              return false;
+            }
+            return true;
+          });
+        }
+        if (removed.length > 0) {
+          await this._save();
+          this._sendBoardUpdate();
+          this._notify(`${removed.length}件のカードを削除しました。`);
+          if (message.deleteDetailsFile === true) {
+            await this._trashDetailsFiles(removed);
+          }
+        }
+        break;
+      }
+
+      case 'bulkArchive': {
+        await this._bulkArchive(toIdList(message.taskIds));
         break;
       }
 
@@ -323,6 +444,7 @@ export class KanbanPanel {
               insertIdx--;
             }
             toCol.tasks.splice(insertIdx, 0, task);
+            updateDoneDate(task, fromCol, toCol);
             this._spawnRepeatOccurrence(task, fromCol, toCol, taskIdx);
             await this._save();
             this._sendBoardUpdate();
@@ -345,6 +467,7 @@ export class KanbanPanel {
             task.group = message.group ?? '';
             let insertIdx = this._getMoveInsertIndex(toCol, message, targetLength);
             toCol.tasks.splice(insertIdx, 0, task);
+            updateDoneDate(task, fromCol, toCol);
             this._spawnRepeatOccurrence(task, fromCol, toCol, taskIdx, previousGroup);
             await this._save();
             this._sendBoardUpdate();
@@ -504,7 +627,7 @@ export class KanbanPanel {
             // Undoing an archive must also delete the copy in the archive file.
             const entry = this._undoStack[this._undoStack.length - 1];
             if (entry) {
-              entry.cleanup = { uri: archived.archiveUri, taskId: archived.archivedTaskId };
+              entry.cleanup = { uri: archived.archiveUri, taskIds: [archived.archivedTaskId] };
             }
             await this._save();
             await vscode.commands.executeCommand('md-kanban-jp.refreshBoards').then(undefined, () => undefined);
@@ -586,7 +709,7 @@ export class KanbanPanel {
         this._board = entry.board;
         await this._save();
         if (entry.cleanup) {
-          await removeTaskFromBoardFile(entry.cleanup.uri, entry.cleanup.taskId);
+          await removeTasksFromBoardFile(entry.cleanup.uri, entry.cleanup.taskIds);
           await vscode.commands.executeCommand('md-kanban-jp.refreshBoards').then(undefined, () => undefined);
         }
         this._sendBoardUpdate();
@@ -683,8 +806,9 @@ export class KanbanPanel {
     const restored: KanbanTask = { ...task, subtasks: task.subtasks.map(s => ({ ...s })), tags: [...task.tags] };
     delete restored.archivedFrom;
     targetColumn.tasks.push(restored);
+    updateDoneDate(restored, undefined, targetColumn);
 
-    this._pushUndo({ uri: targetUri, taskId: restored.id });
+    this._pushUndo({ uri: targetUri, taskIds: [restored.id] });
     try {
       await vscode.workspace.fs.writeFile(targetUri, Buffer.from(serializeToMarkdown(targetBoard), 'utf-8'));
     } catch (error) {
@@ -727,6 +851,7 @@ export class KanbanPanel {
       subtasks: task.subtasks.map(subtask => ({ ...subtask, done: false })),
       tags: [...task.tags],
       group: originalGroup,
+      doneDate: undefined,
     };
 
     const insertAt = Math.max(0, Math.min(originalIndex, fromColumn.tasks.length));
@@ -769,6 +894,170 @@ export class KanbanPanel {
       board: this._board,
       canUndo: this._undoStack.length > 0,
     });
+    // Details files may have been linked, unlinked or created by this change.
+    this._scheduleDetailsInfoUpdate();
+  }
+
+  private _scheduleDetailsInfoUpdate() {
+    if (this._detailsRefreshTimer) {
+      clearTimeout(this._detailsRefreshTimer);
+    }
+    this._detailsRefreshTimer = setTimeout(async () => {
+      this._detailsRefreshTimer = undefined;
+      const info = await this._collectDetailsInfo();
+      this._panel.webview.postMessage({ type: 'detailsInfo', info });
+    }, 200);
+  }
+
+  /** Resolve a task's details path, refusing anything outside the board's folder tree. */
+  private _resolveDetailsUri(relativePath: string | undefined): vscode.Uri | undefined {
+    if (!relativePath || /^[a-z][a-z0-9+.-]*:/i.test(relativePath) || relativePath.startsWith('/')) {
+      return undefined;
+    }
+    const boardDir = this._fileUri.with({ path: this._fileUri.path.replace(/\/[^/]*$/, '') || '/' });
+    return vscode.Uri.joinPath(boardDir, relativePath.replace(/:\d+$/, ''));
+  }
+
+  /** Read a short preview and the modification time of each linked details file. */
+  private async _collectDetailsInfo(): Promise<Record<string, DetailsInfo>> {
+    const info: Record<string, DetailsInfo> = {};
+    const tasks = this._board.columns.flatMap(column => column.tasks).filter(task => task.detailsFile);
+    await Promise.all(tasks.map(async task => {
+      const uri = this._resolveDetailsUri(task.detailsFile);
+      if (!uri) {
+        return;
+      }
+      try {
+        const stat = await vscode.workspace.fs.stat(uri);
+        const data = await vscode.workspace.fs.readFile(uri);
+        info[task.id] = {
+          preview: makeDetailsPreview(Buffer.from(data).toString('utf-8')),
+          mtime: stat.mtime,
+        };
+      } catch {
+        // Missing files simply have no preview.
+      }
+    }));
+    return info;
+  }
+
+  /**
+   * Move deleted cards' details files to the trash. Only files inside this
+   * board's own `<board>.tasks/` folder are touched, never arbitrary links.
+   */
+  private async _trashDetailsFiles(tasks: KanbanTask[]): Promise<void> {
+    const folderName = getTaskDetailsFolderName(getFileName(this._fileUri));
+    const folderUri = getSiblingUri(this._fileUri, folderName);
+    let trashed = 0;
+    const failures: string[] = [];
+    for (const task of tasks) {
+      const uri = this._resolveDetailsUri(task.detailsFile);
+      if (!uri || !uri.path.startsWith(`${folderUri.path}/`) || uri.path.slice(folderUri.path.length + 1).includes('/')) {
+        continue;
+      }
+      try {
+        await vscode.workspace.fs.delete(uri, { useTrash: true });
+        trashed++;
+      } catch (error) {
+        failures.push(`${task.detailsFile}: ${getErrorMessage(error)}`);
+      }
+    }
+    if (failures.length > 0) {
+      this._notify(`詳細ファイルを削除できませんでした: ${failures.join(', ')}`, false);
+    } else if (trashed > 0) {
+      this._notify(`詳細ファイル${trashed}件をゴミ箱に移動しました。`);
+    }
+  }
+
+  /** Copy a card next to the original with a fresh id and its own details file. */
+  private async _duplicateTask(taskId: unknown): Promise<void> {
+    if (typeof taskId !== 'string') {
+      return;
+    }
+    for (const col of this._board.columns) {
+      const idx = col.tasks.findIndex(t => t.id === taskId);
+      if (idx === -1) {
+        continue;
+      }
+      const original = col.tasks[idx];
+      const id = generateId();
+      const title = `${original.title} のコピー`;
+      const copy: KanbanTask = {
+        ...original,
+        id,
+        title,
+        tags: [...original.tags],
+        subtasks: original.subtasks.map(subtask => ({ ...subtask, done: false })),
+        startDate: toDateIso(startOfToday()),
+        doneDate: isCompletedColumnName(col.name, getCompletedColumnGlobs()) ? toDateIso(startOfToday()) : undefined,
+        archivedFrom: undefined,
+        detailsFile: undefined,
+      };
+      if (original.detailsFile) {
+        copy.detailsFile = await this._createTaskDetailsFile(id, title);
+      }
+      col.tasks.splice(idx + 1, 0, copy);
+      await this._save();
+      this._sendBoardUpdate();
+      this._panel.webview.postMessage({ type: 'openTaskEditor', taskId: id });
+      this._notify(`「${original.title}」を複製しました。`);
+      return;
+    }
+  }
+
+  /** Archive several cards; one undo step removes them all from the archive again. */
+  private async _bulkArchive(ids: string[]): Promise<void> {
+    if (isArchiveBoardFile(this._fileUri)) {
+      this._notify('archive.kanban.md内のカードは再度アーカイブできません。', false);
+      return;
+    }
+    if (ids.length === 0) {
+      return;
+    }
+
+    this._pushUndo();
+    const entry = this._undoStack[this._undoStack.length - 1];
+    const archivedIds: string[] = [];
+    let archiveUri: vscode.Uri | undefined;
+    let errorText: string | undefined;
+    for (const id of ids) {
+      try {
+        const archived = await archiveTaskFromBoard(this._board, this._fileUri, {
+          taskId: id,
+          taskSnapshot: undefined,
+          fromColumn: undefined,
+          taskIndex: undefined,
+        });
+        if (archived) {
+          archiveUri = archived.archiveUri;
+          archivedIds.push(archived.archivedTaskId);
+        }
+      } catch (error) {
+        errorText = getErrorMessage(error);
+        break;
+      }
+    }
+
+    if (archivedIds.length === 0 || !archiveUri) {
+      if (entry && this._undoStack[this._undoStack.length - 1] === entry) {
+        this._undoStack.pop();
+      }
+      this._notify(errorText ? `カードをアーカイブできませんでした: ${errorText}` : 'カードが見つかりませんでした。', false);
+      return;
+    }
+
+    if (entry) {
+      entry.cleanup = { uri: archiveUri, taskIds: archivedIds };
+    }
+    await this._save();
+    await vscode.commands.executeCommand('md-kanban-jp.refreshBoards').then(undefined, () => undefined);
+    this._sendBoardUpdate();
+    this._notify(
+      errorText
+        ? `${archivedIds.length}件をアーカイブしましたが、残りは失敗しました: ${errorText}`
+        : `${archivedIds.length}件のカードをarchive.kanban.mdにアーカイブしました。`,
+      !errorText
+    );
   }
 
   private _notify(message: string, ok = true) {
@@ -776,7 +1065,7 @@ export class KanbanPanel {
   }
 
   /** Snapshot the board before a change so it can be undone. */
-  private _pushUndo(cleanup?: { uri: vscode.Uri; taskId: string }) {
+  private _pushUndo(cleanup?: UndoEntry['cleanup']) {
     this._undoStack.push({ board: cloneBoard(this._board), cleanup });
     if (this._undoStack.length > MAX_UNDO_STEPS) {
       this._undoStack.shift();
@@ -797,6 +1086,10 @@ export class KanbanPanel {
 
   public dispose() {
     KanbanPanel.panels.delete(this._fileUri.toString());
+    if (this._detailsRefreshTimer) {
+      clearTimeout(this._detailsRefreshTimer);
+      this._detailsRefreshTimer = undefined;
+    }
     this._panel.dispose();
     while (this._disposables.length) {
       const d = this._disposables.pop();
@@ -831,7 +1124,42 @@ const MUTATING_MESSAGE_TYPES = new Set([
   'sortColumn',
   'clearColumnSort',
   'createTaskDetailsFile',
+  'duplicateTask',
+  'bulkMove',
+  'bulkAddTag',
+  'bulkDelete',
 ]);
+
+function toIdList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
+}
+
+/**
+ * Record when a card reaches a completed-style column and forget it when the
+ * card moves back. Moves between completed columns (and restores) keep the date.
+ */
+function updateDoneDate(task: KanbanTask, fromColumn: KanbanColumn | undefined, toColumn: KanbanColumn): void {
+  const globs = getCompletedColumnGlobs();
+  if (!isCompletedColumnName(toColumn.name, globs)) {
+    delete task.doneDate;
+  } else if (fromColumn && !isCompletedColumnName(fromColumn.name, globs)) {
+    task.doneDate = toDateIso(startOfToday());
+  }
+}
+
+/** Body text of a details file below its first heading, shortened for a tooltip. */
+function makeDetailsPreview(content: string): string {
+  const lines = content.replace(/\r\n?/g, '\n').split('\n');
+  let start = 0;
+  while (start < lines.length && !lines[start].trim()) {
+    start++;
+  }
+  if (start < lines.length && /^#\s/.test(lines[start])) {
+    start++;
+  }
+  const body = lines.slice(start).join('\n').trim();
+  return body.length > DETAILS_PREVIEW_CHARS ? `${body.slice(0, DETAILS_PREVIEW_CHARS)}…` : body;
+}
 
 function cloneBoard(board: KanbanBoard): KanbanBoard {
   return JSON.parse(JSON.stringify(board)) as KanbanBoard;
@@ -1013,8 +1341,8 @@ function getTaskDetailsFolderName(boardFileName: string): string {
   return boardFileName.replace(/\.kanban\.md$/i, '.tasks');
 }
 
-/** Remove a task by id from another board file (used to undo archive/restore). */
-async function removeTaskFromBoardFile(uri: vscode.Uri, taskId: string): Promise<void> {
+/** Remove tasks by id from another board file (used to undo archive/restore). */
+async function removeTasksFromBoardFile(uri: vscode.Uri, taskIds: string[]): Promise<void> {
   let board: KanbanBoard;
   try {
     const data = await vscode.workspace.fs.readFile(uri);
@@ -1023,14 +1351,12 @@ async function removeTaskFromBoardFile(uri: vscode.Uri, taskId: string): Promise
     return;
   }
 
+  const ids = new Set(taskIds);
   let removed = false;
   for (const column of board.columns) {
-    const index = column.tasks.findIndex(task => task.id === taskId);
-    if (index !== -1) {
-      column.tasks.splice(index, 1);
-      removed = true;
-      break;
-    }
+    const before = column.tasks.length;
+    column.tasks = column.tasks.filter(task => !ids.has(task.id));
+    removed = removed || column.tasks.length !== before;
   }
 
   if (removed) {
