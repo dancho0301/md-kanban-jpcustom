@@ -3,6 +3,13 @@
  * unit tested). Files are named after their task like Foam notes.
  */
 
+/**
+ * Key that ties a details file to its task. The board stores the file's path,
+ * but the id lets a file be found again after it was renamed or moved outside
+ * the extension (e.g. while organizing notes in Foam).
+ */
+export const KANBAN_ID_KEY = 'kanban-id';
+
 /** A task title turned into a safe, Foam-friendly file name (without extension). */
 export function toNoteFileBaseName(title: string): string {
   let name = String(title)
@@ -56,11 +63,16 @@ export function makeDetailsPreview(content: string, maxChars: number): string {
   if (start < lines.length && /^#\s/.test(lines[start])) {
     start++;
   }
-  const body = lines.slice(start).join('\n').trim();
+  const body = lines
+    .slice(start)
+    .filter(line => !KANBAN_ID_COMMENT.test(line))
+    .join('\n')
+    .trim();
   return body.length > maxChars ? `${body.slice(0, maxChars)}…` : body;
 }
 
 export interface DetailsFileContentOptions {
+  taskId: string;
   heading: string;
   tags: unknown;
   boardFileName: string;
@@ -72,7 +84,7 @@ export interface DetailsFileContentOptions {
 /** Initial content of a details file: optional Foam-style front matter and a heading. */
 export function buildDetailsFileContent(options: DetailsFileContentOptions): string {
   if (!options.frontmatter) {
-    return `# ${options.heading}\n`;
+    return `# ${options.heading}\n\n<!-- ${KANBAN_ID_KEY}: ${options.taskId} -->\n`;
   }
   // Foam tags cannot contain spaces.
   const tags = Array.isArray(options.tags)
@@ -83,6 +95,7 @@ export function buildDetailsFileContent(options: DetailsFileContentOptions): str
     : [];
   return [
     '---',
+    `${KANBAN_ID_KEY}: ${options.taskId}`,
     `tags: [${tags.map(yamlString).join(', ')}]`,
     `created: ${options.created}`,
     `board: ${yamlString(options.boardFileName)}`,
@@ -95,4 +108,40 @@ export function buildDetailsFileContent(options: DetailsFileContentOptions): str
 
 function yamlString(value: string): string {
   return /^[\p{L}\p{N}_.\-/]+$/u.test(value) && !/^[\d.-]/.test(value) ? value : JSON.stringify(value);
+}
+
+const KANBAN_ID_COMMENT = /^\s*<!--\s*kanban-id:\s*\S+\s*-->\s*$/;
+
+/** Task id recorded in a details file (front matter or `<!-- kanban-id: -->`). */
+export function readKanbanId(content: string): string | undefined {
+  const text = content.replace(/\r\n?/g, '\n');
+  const frontMatter = text.match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
+  if (frontMatter) {
+    const line = frontMatter[1].match(/^kanban-id:\s*["']?([^"'\s]+)["']?\s*$/m);
+    if (line) {
+      return line[1];
+    }
+  }
+  const comment = text.match(/<!--\s*kanban-id:\s*(\S+)\s*-->/);
+  return comment ? comment[1] : undefined;
+}
+
+/**
+ * Add the task id to an existing details file that has none: into its front
+ * matter when it has one (or when front matter is preferred), otherwise as a
+ * trailing comment. Returns the content unchanged when an id is present.
+ */
+export function ensureKanbanId(content: string, taskId: string, preferFrontmatter: boolean): string {
+  if (readKanbanId(content) !== undefined) {
+    return content;
+  }
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  if (/^---\r?\n/.test(content)) {
+    return content.replace(/^---\r?\n/, `---${newline}${KANBAN_ID_KEY}: ${taskId}${newline}`);
+  }
+  if (preferFrontmatter) {
+    return `---${newline}${KANBAN_ID_KEY}: ${taskId}${newline}---${newline}${newline}${content}`;
+  }
+  const trimmed = content.replace(/\s+$/, '');
+  return `${trimmed}${newline}${newline}<!-- ${KANBAN_ID_KEY}: ${taskId} -->${newline}`;
 }

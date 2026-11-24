@@ -14,7 +14,9 @@ import {
 } from './kanbanParser';
 import {
   buildDetailsFileContent,
+  ensureKanbanId,
   makeDetailsPreview,
+  readKanbanId,
   relativePath,
   stripCopySuffix,
   toNoteFileBaseName,
@@ -64,6 +66,8 @@ export class KanbanPanel {
   private _rendered = false;
   private readonly _creatingDetailsFor = new Set<string>();
   private _detailsRefreshTimer?: ReturnType<typeof setTimeout>;
+  /** Missing details paths already searched for, so a lost file is not rescanned on every refresh. */
+  private readonly _relinkTried = new Set<string>();
   private _disposables: vscode.Disposable[] = [];
 
   public static createOrShow(fileUri: vscode.Uri, extensionUri: vscode.Uri, taskId?: string) {
@@ -136,8 +140,13 @@ export class KanbanPanel {
         new vscode.RelativePattern(boardDir, `${folderName}/*.md`)
       );
       const schedule = () => this._scheduleDetailsInfoUpdate();
+      // A file appearing (e.g. moved back by hand) is worth another search.
+      const scheduleAfterCreate = () => {
+        this._relinkTried.clear();
+        schedule();
+      };
       detailsWatcher.onDidChange(schedule);
-      detailsWatcher.onDidCreate(schedule);
+      detailsWatcher.onDidCreate(scheduleAfterCreate);
       detailsWatcher.onDidDelete(schedule);
       this._disposables.push(detailsWatcher);
 
@@ -147,7 +156,7 @@ export class KanbanPanel {
           new vscode.RelativePattern(completedFolder, '*.md')
         );
         completedWatcher.onDidChange(schedule);
-        completedWatcher.onDidCreate(schedule);
+        completedWatcher.onDidCreate(scheduleAfterCreate);
         completedWatcher.onDidDelete(schedule);
         this._disposables.push(completedWatcher);
       }
@@ -653,7 +662,18 @@ export class KanbanPanel {
       }
 
       case 'openFile': {
-        await openLinkedFile(message.path, this._fileUri);
+        let target = message.path;
+        // A details file moved or renamed outside the extension is looked up
+        // by the task id in its front matter before giving up.
+        const linked = this._board.columns
+          .flatMap(column => column.tasks)
+          .filter(task => task.detailsFile && task.detailsFile === target);
+        if (linked.length > 0 && !(await uriExists(this._resolveDetailsUri(target)))) {
+          if (await this._relinkMissingDetails(linked, true)) {
+            target = linked[0].detailsFile;
+          }
+        }
+        await openLinkedFile(target, this._fileUri);
         break;
       }
 
@@ -804,6 +824,7 @@ export class KanbanPanel {
       // overwritten; a free "Name (2).md"-style name is used instead.
       const fileUri = await findFreeFileUri(folderUri, toNoteFileBaseName(heading));
       const content = buildDetailsFileContent({
+        taskId,
         heading,
         tags,
         boardFileName: getFileName(this._fileUri),
@@ -962,24 +983,26 @@ export class KanbanPanel {
       vscode.window.showInformationMessage('アーカイブボードでは実行できません。');
       return;
     }
-    const candidates = this._board.columns
-      .flatMap(column => column.tasks)
-      .filter(task => {
-        const uri = this._resolveDetailsUri(task.detailsFile);
-        return !!uri && stripCopySuffix(getFileName(uri).replace(/\.md$/i, '')) !== toNoteFileBaseName(task.title);
-      });
-    if (candidates.length === 0) {
-      vscode.window.showInformationMessage('名前を変える必要のある詳細ファイルはありません。');
-      return;
-    }
+    const linked = this._board.columns.flatMap(column => column.tasks).filter(task => task.detailsFile);
+    const candidates = linked.filter(task => {
+      const uri = this._resolveDetailsUri(task.detailsFile);
+      return !!uri && stripCopySuffix(getFileName(uri).replace(/\.md$/i, '')) !== toNoteFileBaseName(task.title);
+    });
     const answer = await vscode.window.showInformationMessage(
-      `「${this._board.title}」の詳細ファイル${candidates.length}件を、タスク名に合わせた名前に変更しますか?`,
-      { modal: true, detail: '元に戻す(Ctrl+Z)で元の名前に戻せます。' },
-      '変更する'
+      `「${this._board.title}」の詳細ファイルを整理しますか?`,
+      {
+        modal: true,
+        detail:
+          `・タスク名と違う名前のファイル ${candidates.length}件をタスク名に変更します(元に戻す で戻せます)。\n` +
+          '・タスクIDが記録されていないファイルには、フロントマターに kanban-id を追記します(移動・リネームされても見つけ直せるようにするため)。',
+      },
+      '整理する'
     );
-    if (answer !== '変更する') {
+    if (answer !== '整理する') {
       return;
     }
+
+    const stamped = await this._stampKanbanIds(linked);
 
     this._pushUndo();
     const moves: FileMove[] = [];
@@ -1001,11 +1024,37 @@ export class KanbanPanel {
       this._sendBoardUpdate();
     }
     this._notify(
-      failed > 0
-        ? `${moves.length}件の名前を変更しました(${failed}件は失敗)。`
-        : `${moves.length}件の詳細ファイルの名前をタスク名に合わせました。`,
+      `${moves.length}件の名前をタスク名に変更し、${stamped}件にタスクIDを追記しました` +
+        (failed > 0 ? `(${failed}件は名前を変更できませんでした)。` : '。'),
       failed === 0
     );
+  }
+
+  /** Record `kanban-id` in linked details files that lack one. Returns how many were updated. */
+  private async _stampKanbanIds(tasks: KanbanTask[]): Promise<number> {
+    const preferFrontmatter =
+      vscode.workspace.getConfiguration('mdKanbanJp').get<boolean>('detailsFrontmatter', true) !== false;
+    const done = new Set<string>();
+    let stamped = 0;
+    for (const task of tasks) {
+      const uri = this._resolveDetailsUri(task.detailsFile);
+      // Shared files keep the id of the first card that links them.
+      if (!uri || done.has(uri.toString())) {
+        continue;
+      }
+      done.add(uri.toString());
+      try {
+        const content = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf-8');
+        const updated = ensureKanbanId(content, task.id, preferFrontmatter);
+        if (updated !== content) {
+          await vscode.workspace.fs.writeFile(uri, Buffer.from(updated, 'utf-8'));
+          stamped++;
+        }
+      } catch {
+        // Missing or read-only; leave it.
+      }
+    }
+    return stamped;
   }
 
   /** Move a card in archive.kanban.md back to the board it came from. */
@@ -1166,6 +1215,7 @@ export class KanbanPanel {
   private async _collectDetailsInfo(): Promise<Record<string, DetailsInfo>> {
     const info: Record<string, DetailsInfo> = {};
     const tasks = this._board.columns.flatMap(column => column.tasks).filter(task => task.detailsFile);
+    const missing: KanbanTask[] = [];
     await Promise.all(tasks.map(async task => {
       const uri = this._resolveDetailsUri(task.detailsFile);
       if (!uri) {
@@ -1179,10 +1229,103 @@ export class KanbanPanel {
           mtime: stat.mtime,
         };
       } catch {
-        // Missing files simply have no preview.
+        missing.push(task);
       }
     }));
+
+    // Cheap search in the known folders only; the whole workspace is searched
+    // when the user actually opens a missing link.
+    const untried = missing.filter(task => !this._relinkTried.has(task.detailsFile!));
+    if (untried.length > 0 && !isArchiveBoardFile(this._fileUri)) {
+      untried.forEach(task => this._relinkTried.add(task.detailsFile!));
+      if (await this._relinkMissingDetails(untried, false)) {
+        return this._collectDetailsInfo();
+      }
+    }
     return info;
+  }
+
+  /**
+   * Find details files that are no longer at their recorded path by the
+   * `kanban-id` they carry, and point the cards at the new location.
+   * Cards sharing one path (repeat occurrences) move together.
+   */
+  private async _relinkMissingDetails(tasks: KanbanTask[], searchWorkspace: boolean): Promise<boolean> {
+    const groups = new Map<string, KanbanTask[]>();
+    for (const task of this._board.columns.flatMap(column => column.tasks)) {
+      if (task.detailsFile && tasks.some(missing => missing.detailsFile === task.detailsFile)) {
+        groups.set(task.detailsFile, [...(groups.get(task.detailsFile) ?? []), task]);
+      }
+    }
+    const wanted = new Set([...groups.values()].flat().map(task => task.id));
+    if (wanted.size === 0) {
+      return false;
+    }
+
+    const found = await this._findDetailsFilesById(wanted, searchWorkspace);
+    let relinked = 0;
+    for (const [oldPath, group] of groups) {
+      const uri = group.map(task => found.get(task.id)).find(Boolean);
+      if (!uri) {
+        continue;
+      }
+      const newPath = relativePathFrom(getParentUri(this._fileUri), uri);
+      for (const task of group) {
+        task.detailsFile = newPath;
+      }
+      this._relinkTried.delete(oldPath);
+      relinked++;
+    }
+    if (relinked === 0) {
+      return false;
+    }
+    await this._save();
+    this._sendBoardUpdate();
+    this._notify(`場所が変わっていた詳細ファイル${relinked}件を見つけ、リンクを更新しました。`);
+    return true;
+  }
+
+  private async _findDetailsFilesById(ids: Set<string>, searchWorkspace: boolean): Promise<Map<string, vscode.Uri>> {
+    const files: vscode.Uri[] = [];
+    const folders = [
+      getSiblingUri(this._fileUri, getTaskDetailsFolderName(getFileName(this._fileUri))),
+      getCompletedDetailsFolderUri(this._fileUri),
+    ].filter((uri): uri is vscode.Uri => !!uri);
+    for (const folder of folders) {
+      files.push(...await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/*.md'), undefined, 5000));
+    }
+    if (searchWorkspace) {
+      const workspaceFolder = vscode.workspace.getWorkspaceFolder(this._fileUri);
+      if (workspaceFolder) {
+        files.push(...await vscode.workspace.findFiles(
+          new vscode.RelativePattern(workspaceFolder, '**/*.md'),
+          '{**/node_modules/**,**/.git/**}',
+          20000
+        ));
+      }
+    }
+
+    const found = new Map<string, vscode.Uri>();
+    const seen = new Set<string>();
+    for (const file of files) {
+      if (found.size === ids.size) {
+        break;
+      }
+      if (seen.has(file.toString()) || /\.kanban\.md$|(^|\/)kanban\.md$/i.test(file.path)) {
+        continue;
+      }
+      seen.add(file.toString());
+      try {
+        const data = await vscode.workspace.fs.readFile(file);
+        const id = readKanbanId(Buffer.from(data).toString('utf-8'));
+        if (id && ids.has(id) && !found.has(id)) {
+          found.set(id, file);
+        }
+      } catch {
+        // Unreadable file; skip.
+      }
+    }
+    return found;
   }
 
   /**
@@ -1414,6 +1557,18 @@ function getCompletedDetailsFolderUri(boardUri: vscode.Uri): vscode.Uri | undefi
 }
 
 /** First unused `<base>.md`, `<base> (2).md`, ... in a folder. `self` counts as free. */
+async function uriExists(uri: vscode.Uri | undefined): Promise<boolean> {
+  if (!uri) {
+    return false;
+  }
+  try {
+    await vscode.workspace.fs.stat(uri);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Path of `target` relative to the folder `baseDir`. */
 function relativePathFrom(baseDir: vscode.Uri, target: vscode.Uri): string {
   return relativePath(baseDir.path, target.path);
