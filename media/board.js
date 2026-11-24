@@ -10,6 +10,13 @@
   let showDescriptions = true;
   let quickAddColumn = null;
   let canUndo = boardConfig.canUndo === true;
+  // Details-file previews/mtimes arrive from the extension, keyed by task id.
+  let detailsInfo = boardConfig.detailsInfo || {};
+  const completedColumnGlobs = Array.isArray(boardConfig.completedColumnGlobs)
+    ? boardConfig.completedColumnGlobs
+    : ['完了', 'クローズ', 'リリース済み', 'アーカイブ済み', 'Done', 'Closed', 'Shipped', 'Archived'];
+  // Cards picked with Ctrl/Cmd+click for bulk actions.
+  let selectedTaskIds = new Set();
   let filters = {
     text: '',
     assignee: '',
@@ -209,6 +216,10 @@
     boardEl.appendChild(addColDiv);
 
     app.appendChild(boardEl);
+
+    if (selectedTaskIds.size > 0) {
+      app.appendChild(renderSelectionBar());
+    }
 
     // Restore where the user was: the card they just moved with the keyboard,
     // otherwise the quick-add box so they can keep typing.
@@ -1131,8 +1142,21 @@
 
     card.addEventListener('click', (e) => {
       if (cardWasDragged || e.target.closest('button')) return;
+      // Ctrl/Cmd+click picks cards for bulk actions instead of editing.
+      if (e.ctrlKey || e.metaKey) {
+        if (e.target.closest('a, input, label')) return;
+        e.preventDefault();
+        toggleTaskSelection(task.id);
+        return;
+      }
       openTaskModal(task, columnName);
     });
+
+    if (selectedTaskIds.has(task.id)) {
+      card.style.outline = '2px solid var(--vscode-focusBorder, #007fd4)';
+      card.style.outlineOffset = '1px';
+      card.setAttribute('aria-selected', 'true');
+    }
 
     // Keyboard access: focusable card with editing, navigation, and movement.
     card.tabIndex = 0;
@@ -1140,6 +1164,13 @@
     card.setAttribute('aria-label', task.title + ' を編集');
     card.addEventListener('keydown', (e) => {
       if (e.target !== card) return;
+
+      // Ctrl/Cmd+Space: toggle selection for bulk actions.
+      if (e.key === ' ' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        toggleTaskSelection(task.id);
+        return;
+      }
 
       // Enter / Space: open the editor.
       if (e.key === 'Enter' || e.key === ' ') {
@@ -1203,19 +1234,39 @@
     if (task.dueDate || task.startDate) {
       const dates = el('div', 'card-due');
       if (task.dueDate) {
-        const today = new Date(); today.setHours(0,0,0,0);
-        const dueDate = new Date(task.dueDate + 'T00:00:00');
-        const isOverdue = dueDate < today;
-        if (isOverdue) dates.classList.add('overdue');
+        // Finished cards need no deadline warnings.
+        const finished = !!task.doneDate || isCompletedColumn(columnName);
+        const days = finished ? null : daysUntil(task.dueDate);
+        let suffix = '';
+        if (days !== null && days < 0) {
+          dates.classList.add('overdue');
+          suffix = ' (期限超過)';
+        } else if (days === 0) {
+          suffix = ' (今日まで)';
+          dates.style.cssText = 'color:var(--vscode-charts-orange,#d18616);font-weight:600;background:rgba(209,134,22,0.15);border-radius:3px;padding:1px 4px;display:inline-block;';
+        } else if (days === 1) {
+          suffix = ' (明日まで)';
+          dates.style.cssText = 'color:var(--vscode-charts-orange,#d18616);font-weight:600;';
+        } else if (days !== null && days <= 7) {
+          suffix = ' (あと' + days + '日)';
+          dates.style.cssText = 'color:var(--vscode-charts-yellow,#cca700);';
+        }
         dates.textContent = '📅 '
           + (task.startDate ? task.startDate + ' → ' : '')
           + task.dueDate
-          + (isOverdue ? ' (期限超過)' : '');
+          + suffix;
       } else {
         dates.textContent = '▶ ' + task.startDate;
         dates.title = '開始日';
       }
       card.appendChild(dates);
+    }
+
+    if (task.doneDate) {
+      const done = el('div', 'card-due');
+      done.textContent = '✅ ' + task.doneDate + ' 完了' + formatElapsed(task.startDate, task.doneDate);
+      done.title = '完了列に移動した日';
+      card.appendChild(done);
     }
 
     if (task.description && showDescriptions) {
@@ -1264,6 +1315,11 @@
       const detailsEl = el('div', 'card-source');
       detailsEl.textContent = '📝 ';
       detailsEl.appendChild(createLink('詳細ファイルを開く', task.detailsFile));
+      const metaEl = el('span');
+      metaEl.dataset.detailsMeta = task.id;
+      metaEl.style.opacity = '0.75';
+      detailsEl.appendChild(metaEl);
+      applyDetailsMeta(metaEl);
       card.appendChild(detailsEl);
     }
 
@@ -1404,6 +1460,7 @@
     metaValues.push('作業量: ' + formatFilterLabel(task.workload || 'normal'));
     if (task.startDate) metaValues.push('開始日: ' + task.startDate);
     if (task.dueDate) metaValues.push('期限: ' + task.dueDate);
+    if (task.doneDate) metaValues.push('完了日: ' + task.doneDate + formatElapsed(task.startDate, task.doneDate));
     if (task.assignee) metaValues.push('担当者: ' + task.assignee);
     if (task.source) metaValues.push('ソース: ' + task.source);
     appendDetail(modal, '詳細', metaValues.join('\n'));
@@ -1414,7 +1471,17 @@
       const section = detailSection('詳細ファイル');
       const text = el('div', 'detail-text');
       text.appendChild(createLink(task.detailsFile, task.detailsFile));
+      const metaEl = el('span');
+      metaEl.dataset.detailsMeta = task.id;
+      metaEl.style.opacity = '0.75';
+      text.appendChild(metaEl);
       section.appendChild(text);
+      const preview = el('div', 'detail-text');
+      preview.dataset.detailsPreview = task.id;
+      preview.style.cssText = 'white-space:pre-wrap;margin-top:6px;padding:6px 8px;border-left:3px solid var(--card-border);max-height:180px;overflow:auto;font-size:12px;';
+      section.appendChild(preview);
+      applyDetailsMeta(metaEl);
+      applyDetailsPreview(preview);
       modal.appendChild(section);
     }
 
@@ -1461,6 +1528,14 @@
       sourceBtn.textContent = 'ソースを開く';
       sourceBtn.onclick = () => openSource(task.source);
       actions.appendChild(sourceBtn);
+    }
+
+    if (!task.detailsFile && boardConfig.isArchiveBoard !== true) {
+      actions.appendChild(createDetailsFileButton(task.id));
+    }
+
+    if (boardConfig.isArchiveBoard !== true) {
+      actions.appendChild(createDuplicateButton(task.id, () => overlay.remove()));
     }
 
     if (boardConfig.canArchiveCards !== false) {
@@ -1531,15 +1606,29 @@
   }
 
   function deleteTask(task, afterDelete) {
+    const canDeleteDetails = !!task.detailsFile && boardConfig.isArchiveBoard !== true;
     requestConfirmation('deleteTask', {
       title: 'カードを削除',
       message: '「' + task.title + '」を削除しますか?',
       confirmText: '削除',
       danger: true,
-    }, () => {
-      vscode.postMessage({ type: 'deleteTask', taskId: task.id });
+      extraCheckbox: canDeleteDetails ? '詳細ファイル(' + task.detailsFile + ')もゴミ箱に移動する' : undefined,
+    }, (deleteDetailsFile) => {
+      vscode.postMessage({ type: 'deleteTask', taskId: task.id, deleteDetailsFile: !!deleteDetailsFile });
       if (afterDelete) afterDelete();
     });
+  }
+
+  function createDuplicateButton(taskId, afterClick) {
+    const btn = el('button', 'secondary');
+    btn.type = 'button';
+    btn.textContent = '⧉ 複製';
+    btn.title = '同じ内容のカードをすぐ下に作成して編集する';
+    btn.onclick = () => {
+      vscode.postMessage({ type: 'duplicateTask', taskId });
+      if (afterClick) afterClick();
+    };
+    return btn;
   }
 
   function openSource(source) {
@@ -1658,8 +1747,9 @@
   }
 
   function requestConfirmation(kind, options, onConfirm) {
+    // Skipped confirmations never opt into extra effects (e.g. file deletion).
     if (confirmationPrefs[kind]) {
-      onConfirm();
+      onConfirm(false);
       return;
     }
 
@@ -1668,12 +1758,13 @@
       message: options.message,
       confirmText: options.confirmText,
       danger: options.danger,
-      onConfirm: (remember) => {
+      extraCheckbox: options.extraCheckbox,
+      onConfirm: (remember, extraChecked) => {
         if (remember) {
           confirmationPrefs[kind] = true;
           persistState();
         }
-        onConfirm();
+        onConfirm(extraChecked);
       },
     });
   }
@@ -1689,6 +1780,18 @@
     const message = el('div', 'confirm-message');
     message.textContent = options.message;
     modal.appendChild(message);
+
+    let extraInput = null;
+    if (options.extraCheckbox) {
+      const extraLabel = el('label', 'remember-row');
+      extraInput = document.createElement('input');
+      extraInput.type = 'checkbox';
+      extraLabel.appendChild(extraInput);
+      const extraText = el('span');
+      extraText.textContent = options.extraCheckbox;
+      extraLabel.appendChild(extraText);
+      modal.appendChild(extraLabel);
+    }
 
     const rememberLabel = el('label', 'remember-row');
     const rememberInput = document.createElement('input');
@@ -1711,8 +1814,9 @@
     confirmBtn.textContent = options.confirmText;
     confirmBtn.onclick = () => {
       const remember = rememberInput.checked;
+      const extraChecked = !!(extraInput && extraInput.checked);
       overlay.remove();
-      options.onConfirm(remember);
+      options.onConfirm(remember, extraChecked);
     };
     actions.appendChild(confirmBtn);
     modal.appendChild(actions);
@@ -1996,7 +2100,12 @@
       detailsRow.appendChild(document.createTextNode('📝 '));
       detailsRow.appendChild(createLink('詳細ファイルを開く', existingTask.detailsFile));
       modal.appendChild(detailsRow);
-    } else if (!existingTask) {
+    } else if (existingTask && boardConfig.isArchiveBoard !== true) {
+      // Older tasks created before this feature existed can adopt it on demand.
+      const createBtn = createDetailsFileButton(existingTask.id);
+      createBtn.style.cssText = 'margin-bottom:12px;padding:3px 10px;font-size:11px;';
+      modal.appendChild(createBtn);
+    } else if (!existingTask && boardConfig.isArchiveBoard !== true) {
       const hint = el('div');
       hint.textContent = '📝 保存すると詳細ファイル(Markdown)が自動的に作成されます。';
       hint.style.cssText = 'margin-bottom:12px;font-size:11px;opacity:0.65;';
@@ -2322,6 +2431,8 @@
           restoreTask(existingTask, columnName, () => overlay.remove());
         };
         actions.appendChild(restoreBtn);
+      } else {
+        actions.appendChild(createDuplicateButton(existingTask.id, () => overlay.remove()));
       }
     }
 
@@ -2591,6 +2702,242 @@
     }
   }
 
+  // Modals render from the task as it was when opened, so a button that
+  // creates the details file is tagged with its task id and swapped for an
+  // "open" link once the board update carrying the new file arrives.
+  function createDetailsFileButton(taskId) {
+    const btn = el('button', 'secondary');
+    btn.type = 'button';
+    btn.textContent = '📝 詳細ファイルを作成';
+    btn.title = 'このタスク専用のMarkdownファイルを作成して開く';
+    btn.dataset.detailsFor = taskId;
+    btn.onclick = () => {
+      btn.disabled = true;
+      btn.textContent = '📝 作成中...';
+      vscode.postMessage({ type: 'createTaskDetailsFile', taskId });
+    };
+    return btn;
+  }
+
+  function refreshDetailsFileButtons() {
+    document.querySelectorAll('.modal-overlay [data-details-for]').forEach(btn => {
+      const found = findTaskWithColumn(btn.dataset.detailsFor);
+      if (found && found.task.detailsFile) {
+        const row = el('span');
+        row.appendChild(document.createTextNode('📝 '));
+        row.appendChild(createLink('詳細ファイルを開く', found.task.detailsFile));
+        btn.replaceWith(row);
+      } else if (btn.disabled) {
+        // Creation was refused or failed; let the user try again.
+        btn.disabled = false;
+        btn.textContent = '📝 詳細ファイルを作成';
+      }
+    });
+  }
+
+  // ---- Details file preview / last-updated ----
+
+  function applyDetailsMeta(node) {
+    const info = detailsInfo[node.dataset.detailsMeta];
+    if (!info) {
+      node.textContent = '';
+      node.parentElement && node.parentElement.removeAttribute('title');
+      return;
+    }
+    node.textContent = info.preview
+      ? ' · ' + formatRelativeTime(info.mtime) + 'に更新'
+      : ' · 未記入';
+    // Hovering the card's details line shows the start of the file.
+    if (node.parentElement && node.parentElement.classList.contains('card-source')) {
+      node.parentElement.title = info.preview || '(まだ何も書かれていません)';
+    }
+  }
+
+  function applyDetailsPreview(node) {
+    const info = detailsInfo[node.dataset.detailsPreview];
+    const hasText = !!(info && info.preview);
+    node.textContent = hasText ? info.preview : (info ? 'まだ何も書かれていません' : '');
+    node.style.opacity = hasText ? '' : '0.6';
+    node.style.display = info ? '' : 'none';
+  }
+
+  function refreshDetailsInfo() {
+    document.querySelectorAll('[data-details-meta]').forEach(applyDetailsMeta);
+    document.querySelectorAll('[data-details-preview]').forEach(applyDetailsPreview);
+  }
+
+  function formatRelativeTime(mtime) {
+    const diff = Date.now() - mtime;
+    const minute = 60 * 1000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+    if (diff < minute) return 'たった今';
+    if (diff < hour) return Math.floor(diff / minute) + '分前';
+    if (diff < day) return Math.floor(diff / hour) + '時間前';
+    if (diff < 30 * day) return Math.floor(diff / day) + '日前';
+    const date = new Date(mtime);
+    return date.getFullYear() + '/' + (date.getMonth() + 1) + '/' + date.getDate();
+  }
+
+  // ---- Due / done dates ----
+
+  function daysUntil(isoDate) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const date = new Date(isoDate + 'T00:00:00');
+    if (Number.isNaN(date.getTime())) return null;
+    return Math.round((date - today) / 86400000);
+  }
+
+  function formatElapsed(startDate, doneDate) {
+    if (!startDate) return '';
+    const start = new Date(startDate + 'T00:00:00');
+    const done = new Date(doneDate + 'T00:00:00');
+    const days = Math.round((done - start) / 86400000);
+    if (Number.isNaN(days) || days < 0) return '';
+    return days === 0 ? '(当日中)' : '(所要' + days + '日)';
+  }
+
+  function isCompletedColumn(name) {
+    const columnName = String(name || '').trim();
+    return completedColumnGlobs.some(glob => {
+      const pattern = String(glob || '').trim();
+      if (!pattern) return false;
+      const regex = new RegExp(
+        '^' + pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*').replace(/\\\?/g, '.') + '$',
+        'i'
+      );
+      return regex.test(columnName);
+    });
+  }
+
+  // ---- Multi-select & bulk actions ----
+
+  function toggleTaskSelection(taskId) {
+    if (selectedTaskIds.has(taskId)) {
+      selectedTaskIds.delete(taskId);
+    } else {
+      selectedTaskIds.add(taskId);
+    }
+    pendingFocusTaskId = taskId;
+    render();
+  }
+
+  function clearSelection() {
+    selectedTaskIds = new Set();
+    render();
+  }
+
+  function pruneSelection() {
+    const existing = new Set(getAllTasks().map(task => task.id));
+    selectedTaskIds = new Set(Array.from(selectedTaskIds).filter(id => existing.has(id)));
+  }
+
+  function renderSelectionBar() {
+    const ids = Array.from(selectedTaskIds);
+    const bar = el('div', 'selection-bar');
+    bar.setAttribute('role', 'toolbar');
+    bar.setAttribute('aria-label', '選択したカードの一括操作');
+    bar.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:50;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;'
+      + 'background:var(--card-bg);color:var(--fg);border:1px solid var(--vscode-focusBorder,#007fd4);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.35);font-size:12px;max-width:calc(100vw - 32px);';
+
+    const count = el('strong');
+    count.textContent = ids.length + '件選択中';
+    bar.appendChild(count);
+
+    const moveSelect = document.createElement('select');
+    moveSelect.title = '選択したカードを移動';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '列へ移動…';
+    moveSelect.appendChild(placeholder);
+    for (const column of board.columns) {
+      const option = document.createElement('option');
+      option.value = column.name;
+      option.textContent = column.name;
+      moveSelect.appendChild(option);
+    }
+    moveSelect.onchange = () => {
+      if (!moveSelect.value) return;
+      vscode.postMessage({ type: 'bulkMove', taskIds: ids, toColumn: moveSelect.value });
+    };
+    bar.appendChild(moveSelect);
+
+    const tagInput = document.createElement('input');
+    tagInput.type = 'text';
+    tagInput.placeholder = 'タグを追加';
+    tagInput.style.width = '100px';
+    const tagList = document.createElement('datalist');
+    tagList.id = 'bulk-tag-suggestions';
+    for (const tag of Array.from(new Set(getAllTasks().flatMap(task => task.tags || []))).sort()) {
+      const option = document.createElement('option');
+      option.value = tag;
+      tagList.appendChild(option);
+    }
+    tagInput.setAttribute('list', tagList.id);
+    const addTag = () => {
+      const tag = tagInput.value.trim();
+      if (!tag) { tagInput.focus(); return; }
+      vscode.postMessage({ type: 'bulkAddTag', taskIds: ids, tag });
+    };
+    tagInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); addTag(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); tagInput.blur(); }
+    });
+    bar.appendChild(tagInput);
+    bar.appendChild(tagList);
+    const tagBtn = el('button', 'secondary');
+    tagBtn.type = 'button';
+    tagBtn.textContent = '🏷 追加';
+    tagBtn.onclick = addTag;
+    bar.appendChild(tagBtn);
+
+    if (boardConfig.canArchiveCards !== false) {
+      const archiveBtn = el('button', 'archive-action');
+      archiveBtn.type = 'button';
+      archiveBtn.textContent = 'アーカイブ';
+      archiveBtn.onclick = () => {
+        requestConfirmation('archiveCard', {
+          title: 'カードを一括アーカイブ',
+          message: ids.length + '件のカードをarchive.kanban.mdにアーカイブしますか?',
+          confirmText: 'アーカイブ',
+          danger: false,
+        }, () => vscode.postMessage({ type: 'bulkArchive', taskIds: ids }));
+      };
+      bar.appendChild(archiveBtn);
+    }
+
+    const deleteBtn = el('button', 'danger');
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = '削除';
+    deleteBtn.onclick = () => {
+      const withDetails = ids
+        .map(id => findTaskWithColumn(id))
+        .filter(found => found && found.task.detailsFile).length;
+      requestConfirmation('deleteTask', {
+        title: 'カードを一括削除',
+        message: ids.length + '件のカードを削除しますか?',
+        confirmText: '削除',
+        danger: true,
+        extraCheckbox: withDetails > 0 && boardConfig.isArchiveBoard !== true
+          ? '詳細ファイル(' + withDetails + '件)もゴミ箱に移動する'
+          : undefined,
+      }, (deleteDetailsFile) => {
+        vscode.postMessage({ type: 'bulkDelete', taskIds: ids, deleteDetailsFile: !!deleteDetailsFile });
+      });
+    };
+    bar.appendChild(deleteBtn);
+
+    const clearBtn = el('button', 'secondary');
+    clearBtn.type = 'button';
+    clearBtn.textContent = '選択解除';
+    clearBtn.title = '選択を解除 (Esc)';
+    clearBtn.onclick = () => clearSelection();
+    bar.appendChild(clearBtn);
+
+    return bar;
+  }
+
   function createLink(label, target) {
     const isWebLink = /^https?:\/\//i.test(target);
     const link = document.createElement('a');
@@ -2633,13 +2980,25 @@
     if (msg.type === 'boardUpdate') {
       board = msg.board;
       if (typeof msg.canUndo === 'boolean') canUndo = msg.canUndo;
+      pruneSelection();
       render();
+      refreshDetailsFileButtons();
+    } else if (msg.type === 'detailsInfo') {
+      detailsInfo = msg.info || {};
+      refreshDetailsInfo();
+    } else if (msg.type === 'openTaskEditor') {
+      const found = findTaskWithColumn(msg.taskId);
+      if (found) {
+        document.querySelectorAll('.modal-overlay').forEach(overlay => overlay.remove());
+        openTaskModal(found.task, found.column.name);
+      }
     } else if (msg.type === 'openTaskDetails') {
       openTaskDetailsById(msg.taskId);
     } else if (msg.type === 'archiveResult') {
       showNotice(msg.message || (msg.ok ? 'カードをアーカイブしました。' : 'カードをアーカイブできませんでした。'), msg.ok);
     } else if (msg.type === 'notice') {
       showNotice(msg.message, msg.ok !== false);
+      refreshDetailsFileButtons();
     }
   });
 
@@ -2664,7 +3023,13 @@
   // trapped within it so focus cannot escape to the board behind.
   document.addEventListener('keydown', (e) => {
     const overlays = document.querySelectorAll('.modal-overlay');
-    if (overlays.length === 0) return;
+    if (overlays.length === 0) {
+      if (e.key === 'Escape' && selectedTaskIds.size > 0 && !isTypingTarget(document.activeElement)) {
+        e.preventDefault();
+        clearSelection();
+      }
+      return;
+    }
     const overlay = overlays[overlays.length - 1];
 
     if (e.key === 'Escape') {
@@ -2810,7 +3175,8 @@
     const shortcuts = [
       ['Enter / Space', 'カードの編集画面を開く'],
       ['Ctrl+Enter', '編集画面で保存'],
-      ['Escape', 'モーダルを閉じる'],
+      ['Escape', 'モーダルを閉じる / カードの選択を解除'],
+      ['Ctrl+クリック / Ctrl+Space', 'カードを選択(複数選択して一括で移動・タグ追加・アーカイブ・削除)'],
       ['↑ / ↓', '同じ列の前後のカードへフォーカス移動'],
       ['← / →', '隣の列のカードへフォーカス移動'],
       ['Ctrl+↑ / Ctrl+↓', 'カードを列内で並べ替え'],

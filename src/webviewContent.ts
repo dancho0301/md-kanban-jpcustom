@@ -5,6 +5,10 @@ export interface WebviewBoardConfig {
   canArchiveCards: boolean;
   isArchiveBoard: boolean;
   canUndo: boolean;
+  /** Preview text and modification time of each task's details file, by task id. */
+  detailsInfo?: Record<string, { preview: string; mtime: number }>;
+  /** Column name globs treated as "completed" (no due-date warnings there). */
+  completedColumnGlobs?: string[];
 }
 
 export function getWebviewContent(

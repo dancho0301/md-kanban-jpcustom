@@ -2,7 +2,7 @@
   "name": "md-kanban-jp",
   "displayName": "MD Kanban JP",
   "description": "Markdownファイルとして保存されるカンバンボードでプロジェクトのタスクやTODOを管理します",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "dancho0301",
   "license": "MIT",
   "repository": {

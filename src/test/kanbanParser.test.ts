@@ -159,6 +159,21 @@ test('details file path round-trips and is omitted when unset', () => {
   assert.ok(!serializeToMarkdown(noDetails).includes('<!-- details:'));
 });
 
+test('done date round-trips and is omitted when unset', () => {
+  const board = parseMarkdown('# B\n\n## 完了\n\n#### T\n<!-- id: t1 -->\n<!-- start: 2026-11-01 -->\n<!-- done: 2026-11-05 -->\n');
+  const task = board.columns[0].tasks[0];
+  assert.equal(task.doneDate, '2026-11-05');
+  assert.equal(task.startDate, '2026-11-01');
+
+  const md = serializeToMarkdown(board);
+  assert.ok(md.includes('<!-- done: 2026-11-05 -->'));
+  assert.equal(parseMarkdown(md).columns[0].tasks[0].doneDate, '2026-11-05');
+
+  const notDone = parseMarkdown('# B\n\n## C\n\n#### T\n<!-- id: t2 -->\n');
+  assert.equal(notDone.columns[0].tasks[0].doneDate, undefined);
+  assert.ok(!serializeToMarkdown(notDone).includes('<!-- done:'));
+});
+
 test('unknown repeat values are ignored', () => {
   const board = parseMarkdown('# B\n\n## C\n\n#### T\n<!-- id: t1 -->\n<!-- repeat: hourly -->\n');
   assert.equal(board.columns[0].tasks[0].repeat, undefined);

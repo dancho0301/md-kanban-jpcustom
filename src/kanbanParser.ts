@@ -29,6 +29,8 @@ export interface KanbanTask {
   archivedFrom?: string;
   /** Path (relative to the board file) to this task's dedicated notes file. */
   detailsFile?: string;
+  /** Date the card was moved into a completed-style column. */
+  doneDate?: string;
 }
 
 export type ColumnSort = 'due' | 'priority' | 'title';
@@ -208,6 +210,8 @@ export function parseMarkdown(content: string): KanbanBoard {
           currentTask.dueDate = val;
         } else if (key === 'start') {
           currentTask.startDate = val;
+        } else if (key === 'done' && val) {
+          currentTask.doneDate = val;
         } else if (key === 'assignee') {
           currentTask.assignee = val;
         } else if (key === 'source') {
@@ -289,6 +293,9 @@ function serializeTask(lines: string[], task: KanbanTask, needsGroupOverride = f
   }
   if (task.dueDate) {
     lines.push(`<!-- due: ${task.dueDate} -->`);
+  }
+  if (task.doneDate) {
+    lines.push(`<!-- done: ${task.doneDate} -->`);
   }
   if (task.assignee) {
     lines.push(`<!-- assignee: ${task.assignee} -->`);
