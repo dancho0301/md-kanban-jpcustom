@@ -1463,6 +1463,15 @@
       actions.appendChild(sourceBtn);
     }
 
+    if (!task.detailsFile && boardConfig.isArchiveBoard !== true) {
+      const createDetailsBtn = el('button', 'secondary');
+      createDetailsBtn.textContent = '📝 詳細ファイルを作成';
+      createDetailsBtn.onclick = () => {
+        vscode.postMessage({ type: 'createTaskDetailsFile', taskId: task.id });
+      };
+      actions.appendChild(createDetailsBtn);
+    }
+
     if (boardConfig.canArchiveCards !== false) {
       const archiveBtn = el('button', 'archive-action');
       archiveBtn.textContent = 'アーカイブ';
@@ -1996,7 +2005,18 @@
       detailsRow.appendChild(document.createTextNode('📝 '));
       detailsRow.appendChild(createLink('詳細ファイルを開く', existingTask.detailsFile));
       modal.appendChild(detailsRow);
-    } else if (!existingTask) {
+    } else if (existingTask && boardConfig.isArchiveBoard !== true) {
+      // Older tasks created before this feature existed can adopt it on demand.
+      const createBtn = el('button', 'secondary');
+      createBtn.type = 'button';
+      createBtn.textContent = '📝 詳細ファイルを作成';
+      createBtn.title = 'このタスク専用のMarkdownファイルを作成して開く';
+      createBtn.style.cssText = 'margin-bottom:12px;padding:3px 10px;font-size:11px;';
+      createBtn.onclick = () => {
+        vscode.postMessage({ type: 'createTaskDetailsFile', taskId: existingTask.id });
+      };
+      modal.appendChild(createBtn);
+    } else if (!existingTask && boardConfig.isArchiveBoard !== true) {
       const hint = el('div');
       hint.textContent = '📝 保存すると詳細ファイル(Markdown)が自動的に作成されます。';
       hint.style.cssText = 'margin-bottom:12px;font-size:11px;opacity:0.65;';

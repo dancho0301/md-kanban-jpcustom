@@ -252,6 +252,40 @@ export class KanbanPanel {
         break;
       }
 
+      case 'createTaskDetailsFile': {
+        if (isArchiveBoardFile(this._fileUri)) {
+          this._undoStack.pop();
+          this._notify('アーカイブボード内のカードには詳細ファイルを作成できません。', false);
+          break;
+        }
+
+        let target: KanbanTask | undefined;
+        for (const col of this._board.columns) {
+          target = col.tasks.find(t => t.id === message.taskId);
+          if (target) break;
+        }
+
+        if (!target) {
+          // Nothing to undo if the task vanished.
+          this._undoStack.pop();
+        } else if (target.detailsFile) {
+          this._undoStack.pop();
+          this._notify('このタスクには既に詳細ファイルがあります。', false);
+        } else {
+          const detailsFile = await this._createTaskDetailsFile(target.id, target.title);
+          if (detailsFile) {
+            target.detailsFile = detailsFile;
+            await this._save();
+            this._sendBoardUpdate();
+            this._notify('詳細ファイルを作成しました。');
+            await openLinkedFile(detailsFile, this._fileUri);
+          } else {
+            this._undoStack.pop();
+          }
+        }
+        break;
+      }
+
       case 'openExternal': {
         await openExternalLink(message.url);
         break;
@@ -783,6 +817,7 @@ const MUTATING_MESSAGE_TYPES = new Set([
   'updateTitle',
   'sortColumn',
   'clearColumnSort',
+  'createTaskDetailsFile',
 ]);
 
 function cloneBoard(board: KanbanBoard): KanbanBoard {
